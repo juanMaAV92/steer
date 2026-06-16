@@ -36,6 +36,39 @@ no entra a Steer.
 
 ---
 
+## 1.b Usuarios objetivo y posicionamiento
+
+**Wedge:** *hacer que desplegar deje de dar miedo* a personas que no dominan cloud, sin
+sacarlas de su propio AWS. La competencia no es k9s (herramienta de power-users), sino el
+hueco entre "la consola de AWS asusta" y los PaaS (Vercel/Railway/Render) que resuelven la
+simplicidad pero imponen su plataforma.
+
+**Pitch:** *"La simplicidad de un PaaS, sobre tu propio AWS. Configúralo una vez; luego
+cualquiera despliega sin tocar la consola ni memorizar comandos."*
+
+**Dos perfiles de usuario:**
+1. **Quien sabe cloud** (lead / plataforma) configura `steer.toml` una vez.
+2. **El resto del equipo** despliega/escala/consulta con comandos simples + TUI, sin
+   entender AWS por debajo.
+
+Patrón lazygit: no enseña el motor, quita el miedo. **Sweet spot:** equipos pequeños con 1
+persona técnica + N que solo quieren shippear. **Fuera de sweet spot (honesto):** el dev
+solo sin nadie que haga el setup → mejor un PaaS gestionado.
+
+### Re-ponderación de prioridades (derivada del target)
+El diseño técnico no cambia; cambia el peso de las features:
+1. **Guardrails > potencia.** Prod read-only, confirmaciones, **preview de "qué va a pasar"**
+   antes de actuar, y **rollback a un comando**. Que no se pueda romper algo importa más que
+   mil flags. La seguridad real viene del preview+rollback, no de esconder complejidad.
+2. **TUI y pickers = EL producto**, no un extra. El dev no-cloud vive en la TUI; el CLI
+   scriptable es para el lead y CI (sigue siendo de primera clase — ambos sobre el mismo core).
+3. **Mensajes de error que enseñan:** *falló X porque Y, prueba Z.*
+4. **Onboarding impecable** y **defaults sensatos:** el primer minuto decide la adopción.
+   Nota: el wizard de onboarding completo (`config init` que detecta perfiles AWS, valida y
+   da errores amables) es **scope de un plan futuro** (ver roadmap, Plan 08), no del Hito 1.
+
+---
+
 ## 2. Decisiones de diseño (con racional)
 
 | Decisión | Elección | Por qué |
