@@ -1,4 +1,4 @@
-.PHONY: build test lint tidy
+.PHONY: build test tidy
 
 build:
 	go build -o steer ./cmd/steer

@@ -1,6 +1,6 @@
 module github.com/juanMaAV92/steer
 
-go 1.26.3
+go 1.24
 
 require (
 	github.com/BurntSushi/toml v1.6.0
