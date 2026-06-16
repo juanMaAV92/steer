@@ -1,7 +1,19 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+
+	"github.com/juanMaAV92/steer/internal/cli"
+)
+
+var version = "dev" // sobrescrito por GoReleaser con -ldflags
 
 func main() {
-	fmt.Println("steer")
+	root := cli.NewRootCmd(version)
+	root.AddCommand(cli.NewConfigCmd())
+	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
 }
