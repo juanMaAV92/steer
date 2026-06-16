@@ -1,0 +1,24 @@
+# Steer configuration — copy to `steer.toml` (gitignored) and fill in your values.
+# Steer looks for `steer.toml` in the current repo or ~/.config/steer/steer.toml.
+
+[providers.aws.environments.dev]
+profile  = "dev"
+writable = true
+
+[providers.aws.environments.staging]
+profile    = "staging"
+account_id = "000000000000"
+role_arn   = "arn:aws:iam::000000000000:role/your-deployer-role"
+writable   = true
+
+[providers.aws.environments.prod]
+profile    = "prod"
+account_id = "000000000000"
+role_arn   = "arn:aws:iam::000000000000:role/your-deployer-role"
+writable   = false   # read-only: blocks mutating commands in prod
+
+[providers.aws.naming]
+# Templates that resolve short names to real AWS resource names.
+# Placeholders: {env} = environment key, {name} = the short name you pass on the CLI.
+cluster_template = "{env}-cluster"
+service_template = "{name}"
