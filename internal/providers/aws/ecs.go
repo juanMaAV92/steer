@@ -39,15 +39,24 @@ func newDeployer(api ecsAPI) *ECSDeployer {
 
 // ListServices devuelve el estado de los servicios del cluster.
 func (d *ECSDeployer) ListServices(ctx context.Context, cluster string) ([]core.ServiceStatus, error) {
-	list, err := d.api.ListServices(ctx, &ecs.ListServicesInput{Cluster: awssdk.String(cluster)})
-	if err != nil {
-		return nil, err
+	var arns []string
+	var token *string
+	for {
+		list, err := d.api.ListServices(ctx, &ecs.ListServicesInput{Cluster: awssdk.String(cluster), NextToken: token})
+		if err != nil {
+			return nil, err
+		}
+		arns = append(arns, list.ServiceArns...)
+		if awssdk.ToString(list.NextToken) == "" {
+			break
+		}
+		token = list.NextToken
 	}
-	if len(list.ServiceArns) == 0 {
+	if len(arns) == 0 {
 		return nil, nil
 	}
 	var out []core.ServiceStatus
-	for _, batch := range chunk(list.ServiceArns, 10) { // ECS DescribeServices: máx 10 por llamada
+	for _, batch := range chunk(arns, 10) { // ECS DescribeServices: máx 10 por llamada
 		desc, err := d.api.DescribeServices(ctx, &ecs.DescribeServicesInput{
 			Cluster:  awssdk.String(cluster),
 			Services: batch,
@@ -177,12 +186,13 @@ func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string) 
 	if len(td.ContainerDefinitions) == 0 {
 		return fmt.Errorf("task definition for %q has no containers", service)
 	}
-	td.ContainerDefinitions[0].Image = awssdk.String(
-		replaceTag(awssdk.ToString(td.ContainerDefinitions[0].Image), tag))
+	containers := make([]ecstypes.ContainerDefinition, len(td.ContainerDefinitions))
+	copy(containers, td.ContainerDefinitions)
+	containers[0].Image = awssdk.String(replaceTag(awssdk.ToString(containers[0].Image), tag))
 
 	reg, err := d.api.RegisterTaskDefinition(ctx, &ecs.RegisterTaskDefinitionInput{
 		Family:                  td.Family,
-		ContainerDefinitions:    td.ContainerDefinitions,
+		ContainerDefinitions:    containers,
 		Cpu:                     td.Cpu,
 		Memory:                  td.Memory,
 		NetworkMode:             td.NetworkMode,
@@ -190,6 +200,13 @@ func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string) 
 		TaskRoleArn:             td.TaskRoleArn,
 		RequiresCompatibilities: td.RequiresCompatibilities,
 		Volumes:                 td.Volumes,
+		PlacementConstraints:    td.PlacementConstraints,
+		RuntimePlatform:         td.RuntimePlatform,
+		EphemeralStorage:        td.EphemeralStorage,
+		ProxyConfiguration:      td.ProxyConfiguration,
+		InferenceAccelerators:   td.InferenceAccelerators,
+		PidMode:                 td.PidMode,
+		IpcMode:                 td.IpcMode,
 	})
 	if err != nil {
 		return err

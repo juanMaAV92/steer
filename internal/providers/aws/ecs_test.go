@@ -12,7 +12,8 @@ import (
 
 // fakeECS implementa ecsAPI con respuestas y registro de llamadas.
 type fakeECS struct {
-	listOut     *ecs.ListServicesOutput
+	listPages   []*ecs.ListServicesOutput
+	listIdx     int
 	describeOut *ecs.DescribeServicesOutput
 	taskDefOut  *ecs.DescribeTaskDefinitionOutput
 	registerOut *ecs.RegisterTaskDefinitionOutput
@@ -23,7 +24,12 @@ type fakeECS struct {
 }
 
 func (f *fakeECS) ListServices(_ context.Context, _ *ecs.ListServicesInput, _ ...func(*ecs.Options)) (*ecs.ListServicesOutput, error) {
-	return f.listOut, nil
+	if f.listIdx >= len(f.listPages) {
+		return &ecs.ListServicesOutput{}, nil
+	}
+	out := f.listPages[f.listIdx]
+	f.listIdx++
+	return out, nil
 }
 func (f *fakeECS) DescribeServices(_ context.Context, _ *ecs.DescribeServicesInput, _ ...func(*ecs.Options)) (*ecs.DescribeServicesOutput, error) {
 	return f.describeOut, nil
@@ -45,7 +51,7 @@ func (f *fakeECS) ListTaskDefinitions(_ context.Context, _ *ecs.ListTaskDefiniti
 
 func TestListServices(t *testing.T) {
 	f := &fakeECS{
-		listOut: &ecs.ListServicesOutput{ServiceArns: []string{"arn:svc/catalog"}},
+		listPages: []*ecs.ListServicesOutput{{ServiceArns: []string{"arn:svc/catalog"}}},
 		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
 			ServiceName:  awssdk.String("catalog"),
 			RunningCount: 2,
@@ -138,7 +144,7 @@ func TestRollbackTargetsPreviousRevision(t *testing.T) {
 			TaskDefinition: awssdk.String("arn:td/catalog:6"),
 		}}},
 		taskDefOut: &ecs.DescribeTaskDefinitionOutput{TaskDefinition: &ecstypes.TaskDefinition{
-			Family: awssdk.String("catalog"),
+			Family:               awssdk.String("catalog"),
 			ContainerDefinitions: []ecstypes.ContainerDefinition{{Image: awssdk.String("host/catalog:v2")}},
 		}},
 		listTDOut: &ecs.ListTaskDefinitionsOutput{TaskDefinitionArns: []string{
@@ -164,4 +170,41 @@ func TestRollbackNoPreviousRevision(t *testing.T) {
 	}
 	d := newDeployer(f)
 	require.Error(t, d.Rollback(context.Background(), "stg-cluster", "catalog"))
+}
+
+func TestDeployPreservesRuntimePlatform(t *testing.T) {
+	f := &fakeECS{
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			TaskDefinition: awssdk.String("arn:td/catalog:5"),
+		}}},
+		taskDefOut: &ecs.DescribeTaskDefinitionOutput{TaskDefinition: &ecstypes.TaskDefinition{
+			Family:               awssdk.String("catalog"),
+			ContainerDefinitions: []ecstypes.ContainerDefinition{{Image: awssdk.String("host/catalog:v1")}},
+			RuntimePlatform:      &ecstypes.RuntimePlatform{CpuArchitecture: ecstypes.CPUArchitectureArm64},
+		}},
+		registerOut: &ecs.RegisterTaskDefinitionOutput{TaskDefinition: &ecstypes.TaskDefinition{
+			TaskDefinitionArn: awssdk.String("arn:td/catalog:6"),
+		}},
+	}
+	d := newDeployer(f)
+	require.NoError(t, d.Deploy(context.Background(), "stg-cluster", "catalog", "v2"))
+	require.NotNil(t, f.registerIn.RuntimePlatform)
+	require.Equal(t, ecstypes.CPUArchitectureArm64, f.registerIn.RuntimePlatform.CpuArchitecture)
+}
+
+func TestListServicesPaginates(t *testing.T) {
+	f := &fakeECS{
+		listPages: []*ecs.ListServicesOutput{
+			{ServiceArns: []string{"a"}, NextToken: awssdk.String("t1")},
+			{ServiceArns: []string{"b"}},
+		},
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{
+			{ServiceName: awssdk.String("a"), RunningCount: 1, DesiredCount: 1},
+		}},
+	}
+	d := newDeployer(f)
+	got, err := d.ListServices(context.Background(), "c")
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(got), 1) // recorrió 2 páginas sin colgarse
+	require.Equal(t, 2, f.listIdx)         // consumió ambas páginas
 }
