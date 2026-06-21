@@ -125,3 +125,47 @@ func (d *ECSDeployer) CurrentTag(ctx context.Context, cluster, service string) (
 	}
 	return tagFromImage(awssdk.ToString(td.ContainerDefinitions[0].Image)), nil
 }
+
+// replaceTag sustituye el tag de una imagen "repo:tag" por newTag.
+func replaceTag(image, newTag string) string {
+	i := strings.LastIndex(image, ":")
+	if i < 0 {
+		return image + ":" + newTag
+	}
+	return image[:i+1] + newTag
+}
+
+// Deploy registra una nueva task def con la imagen re-tageada y apunta el servicio a ella.
+func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string) error {
+	td, err := d.currentTaskDef(ctx, cluster, service)
+	if err != nil {
+		return err
+	}
+	if len(td.ContainerDefinitions) == 0 {
+		return fmt.Errorf("task definition for %q has no containers", service)
+	}
+	td.ContainerDefinitions[0].Image = awssdk.String(
+		replaceTag(awssdk.ToString(td.ContainerDefinitions[0].Image), tag))
+
+	reg, err := d.api.RegisterTaskDefinition(ctx, &ecs.RegisterTaskDefinitionInput{
+		Family:                  td.Family,
+		ContainerDefinitions:    td.ContainerDefinitions,
+		Cpu:                     td.Cpu,
+		Memory:                  td.Memory,
+		NetworkMode:             td.NetworkMode,
+		ExecutionRoleArn:        td.ExecutionRoleArn,
+		TaskRoleArn:             td.TaskRoleArn,
+		RequiresCompatibilities: td.RequiresCompatibilities,
+		Volumes:                 td.Volumes,
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = d.api.UpdateService(ctx, &ecs.UpdateServiceInput{
+		Cluster:        awssdk.String(cluster),
+		Service:        awssdk.String(service),
+		TaskDefinition: reg.TaskDefinition.TaskDefinitionArn,
+	})
+	return err
+}

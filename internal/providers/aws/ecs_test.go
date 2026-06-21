@@ -84,3 +84,40 @@ func TestCurrentTag(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "v1.2.3", tag)
 }
+
+func TestReplaceTag(t *testing.T) {
+	require.Equal(t, "repo:v2", replaceTag("repo:v1", "v2"))
+	require.Equal(t, "host/repo:v2", replaceTag("host/repo:v1", "v2"))
+	require.Equal(t, "no-tag:v2", replaceTag("no-tag", "v2"))
+}
+
+func TestDeployRegistersAndUpdates(t *testing.T) {
+	f := &fakeECS{
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			TaskDefinition: awssdk.String("arn:td/catalog:5"),
+		}}},
+		taskDefOut: &ecs.DescribeTaskDefinitionOutput{TaskDefinition: &ecstypes.TaskDefinition{
+			Family: awssdk.String("catalog"),
+			ContainerDefinitions: []ecstypes.ContainerDefinition{{
+				Name:  awssdk.String("app"),
+				Image: awssdk.String("host/catalog:v1"),
+			}},
+		}},
+		registerOut: &ecs.RegisterTaskDefinitionOutput{TaskDefinition: &ecstypes.TaskDefinition{
+			TaskDefinitionArn: awssdk.String("arn:td/catalog:6"),
+		}},
+	}
+	d := newDeployer(f)
+
+	err := d.Deploy(context.Background(), "stg-cluster", "catalog", "v2")
+	require.NoError(t, err)
+
+	require.NotNil(t, f.registerIn)
+	require.Equal(t, "catalog", awssdk.ToString(f.registerIn.Family))
+	require.Equal(t, "host/catalog:v2", awssdk.ToString(f.registerIn.ContainerDefinitions[0].Image))
+
+	require.NotNil(t, f.updateIn)
+	require.Equal(t, "stg-cluster", awssdk.ToString(f.updateIn.Cluster))
+	require.Equal(t, "catalog", awssdk.ToString(f.updateIn.Service))
+	require.Equal(t, "arn:td/catalog:6", awssdk.ToString(f.updateIn.TaskDefinition))
+}
