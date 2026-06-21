@@ -121,3 +121,47 @@ func TestDeployRegistersAndUpdates(t *testing.T) {
 	require.Equal(t, "catalog", awssdk.ToString(f.updateIn.Service))
 	require.Equal(t, "arn:td/catalog:6", awssdk.ToString(f.updateIn.TaskDefinition))
 }
+
+func TestScaleSetsDesiredCount(t *testing.T) {
+	f := &fakeECS{}
+	d := newDeployer(f)
+
+	require.NoError(t, d.Scale(context.Background(), "stg-cluster", "catalog", 4))
+	require.NotNil(t, f.updateIn)
+	require.Equal(t, "catalog", awssdk.ToString(f.updateIn.Service))
+	require.Equal(t, int32(4), awssdk.ToInt32(f.updateIn.DesiredCount))
+}
+
+func TestRollbackTargetsPreviousRevision(t *testing.T) {
+	f := &fakeECS{
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			TaskDefinition: awssdk.String("arn:td/catalog:6"),
+		}}},
+		taskDefOut: &ecs.DescribeTaskDefinitionOutput{TaskDefinition: &ecstypes.TaskDefinition{
+			Family: awssdk.String("catalog"),
+			ContainerDefinitions: []ecstypes.ContainerDefinition{{Image: awssdk.String("host/catalog:v2")}},
+		}},
+		listTDOut: &ecs.ListTaskDefinitionsOutput{TaskDefinitionArns: []string{
+			"arn:td/catalog:6", "arn:td/catalog:5", "arn:td/catalog:4",
+		}},
+	}
+	d := newDeployer(f)
+
+	require.NoError(t, d.Rollback(context.Background(), "stg-cluster", "catalog"))
+	require.NotNil(t, f.updateIn)
+	require.Equal(t, "arn:td/catalog:5", awssdk.ToString(f.updateIn.TaskDefinition))
+}
+
+func TestRollbackNoPreviousRevision(t *testing.T) {
+	f := &fakeECS{
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			TaskDefinition: awssdk.String("arn:td/catalog:1"),
+		}}},
+		taskDefOut: &ecs.DescribeTaskDefinitionOutput{TaskDefinition: &ecstypes.TaskDefinition{
+			Family: awssdk.String("catalog"),
+		}},
+		listTDOut: &ecs.ListTaskDefinitionsOutput{TaskDefinitionArns: []string{"arn:td/catalog:1"}},
+	}
+	d := newDeployer(f)
+	require.Error(t, d.Rollback(context.Background(), "stg-cluster", "catalog"))
+}

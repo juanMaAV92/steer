@@ -78,10 +78,7 @@ func chunk(xs []string, n int) [][]string {
 	return batches
 }
 
-// compile-time check parcial (se completa en tasks siguientes).
-var _ interface {
-	ListServices(context.Context, string) ([]core.ServiceStatus, error)
-} = (*ECSDeployer)(nil)
+var _ core.Deployer = (*ECSDeployer)(nil)
 
 // currentTaskDef obtiene la task definition activa de un servicio.
 func (d *ECSDeployer) currentTaskDef(ctx context.Context, cluster, service string) (*ecstypes.TaskDefinition, error) {
@@ -133,6 +130,42 @@ func replaceTag(image, newTag string) string {
 		return image + ":" + newTag
 	}
 	return image[:i+1] + newTag
+}
+
+// Scale ajusta el desired count del servicio.
+func (d *ECSDeployer) Scale(ctx context.Context, cluster, service string, count int) error {
+	_, err := d.api.UpdateService(ctx, &ecs.UpdateServiceInput{
+		Cluster:      awssdk.String(cluster),
+		Service:      awssdk.String(service),
+		DesiredCount: awssdk.Int32(int32(count)),
+	})
+	return err
+}
+
+// Rollback apunta el servicio a la revisión de task def inmediatamente anterior.
+func (d *ECSDeployer) Rollback(ctx context.Context, cluster, service string) error {
+	td, err := d.currentTaskDef(ctx, cluster, service)
+	if err != nil {
+		return err
+	}
+	family := awssdk.ToString(td.Family)
+	list, err := d.api.ListTaskDefinitions(ctx, &ecs.ListTaskDefinitionsInput{
+		FamilyPrefix: awssdk.String(family),
+		Sort:         ecstypes.SortOrderDesc,
+	})
+	if err != nil {
+		return err
+	}
+	if len(list.TaskDefinitionArns) < 2 {
+		return fmt.Errorf("no previous revision to roll back to for %q", service)
+	}
+	prev := list.TaskDefinitionArns[1]
+	_, err = d.api.UpdateService(ctx, &ecs.UpdateServiceInput{
+		Cluster:        awssdk.String(cluster),
+		Service:        awssdk.String(service),
+		TaskDefinition: awssdk.String(prev),
+	})
+	return err
 }
 
 // Deploy registra una nueva task def con la imagen re-tageada y apunta el servicio a ella.
