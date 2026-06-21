@@ -61,3 +61,26 @@ func TestListServices(t *testing.T) {
 	require.Equal(t, 2, got[0].Running)
 	require.Equal(t, 3, got[0].Desired)
 }
+
+func TestTagFromImage(t *testing.T) {
+	require.Equal(t, "v1.2.3", tagFromImage("123.dkr.ecr.us-east-1.amazonaws.com/catalog:v1.2.3"))
+	require.Equal(t, "", tagFromImage("no-tag-image"))
+}
+
+func TestCurrentTag(t *testing.T) {
+	f := &fakeECS{
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			TaskDefinition: awssdk.String("arn:td/catalog:5"),
+		}}},
+		taskDefOut: &ecs.DescribeTaskDefinitionOutput{TaskDefinition: &ecstypes.TaskDefinition{
+			ContainerDefinitions: []ecstypes.ContainerDefinition{{
+				Image: awssdk.String("123.dkr.ecr.us-east-1.amazonaws.com/catalog:v1.2.3"),
+			}},
+		}},
+	}
+	d := newDeployer(f)
+
+	tag, err := d.CurrentTag(context.Background(), "stg-cluster", "catalog")
+	require.NoError(t, err)
+	require.Equal(t, "v1.2.3", tag)
+}

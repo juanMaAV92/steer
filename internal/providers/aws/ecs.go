@@ -2,9 +2,12 @@ package aws
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/juanMaAV92/steer/internal/core"
 )
 
@@ -79,3 +82,46 @@ func chunk(xs []string, n int) [][]string {
 var _ interface {
 	ListServices(context.Context, string) ([]core.ServiceStatus, error)
 } = (*ECSDeployer)(nil)
+
+// currentTaskDef obtiene la task definition activa de un servicio.
+func (d *ECSDeployer) currentTaskDef(ctx context.Context, cluster, service string) (*ecstypes.TaskDefinition, error) {
+	desc, err := d.api.DescribeServices(ctx, &ecs.DescribeServicesInput{
+		Cluster:  awssdk.String(cluster),
+		Services: []string{service},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(desc.Services) == 0 {
+		return nil, fmt.Errorf("service %q not found in cluster %q", service, cluster)
+	}
+	tdArn := awssdk.ToString(desc.Services[0].TaskDefinition)
+	td, err := d.api.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{
+		TaskDefinition: awssdk.String(tdArn),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return td.TaskDefinition, nil
+}
+
+// tagFromImage extrae el tag de una imagen "repo:tag" (cadena vacía si no hay tag).
+func tagFromImage(image string) string {
+	i := strings.LastIndex(image, ":")
+	if i < 0 {
+		return ""
+	}
+	return image[i+1:]
+}
+
+// CurrentTag devuelve el tag de imagen del primer contenedor del servicio.
+func (d *ECSDeployer) CurrentTag(ctx context.Context, cluster, service string) (string, error) {
+	td, err := d.currentTaskDef(ctx, cluster, service)
+	if err != nil {
+		return "", err
+	}
+	if len(td.ContainerDefinitions) == 0 {
+		return "", fmt.Errorf("task definition for %q has no containers", service)
+	}
+	return tagFromImage(awssdk.ToString(td.ContainerDefinitions[0].Image)), nil
+}
