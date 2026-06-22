@@ -32,3 +32,21 @@ func TestServiceStatusListsServices(t *testing.T) {
 	require.Contains(t, out, "billing")
 	require.True(t, strings.Contains(out, "2/2"))
 }
+
+func TestDeployNonInteractive(t *testing.T) {
+	fake := &coretest.FakeDeployer{CurrentTagValue: "v1"}
+	withFakeDeployer(t, fake)
+
+	out, err := runRoot(t, "service", "deploy", "-s", "catalog", "-t", "v2", "-y")
+	require.NoError(t, err)
+	require.Equal(t, []string{"stg-cluster/catalog/v2"}, fake.DeployCalls)
+	require.Contains(t, out, "v1") // preview muestra tag actual
+	require.Contains(t, out, "v2") // y el objetivo
+	require.Contains(t, out, "rollback") // sugiere rollback
+}
+
+func TestDeployRequiresServiceAndTag(t *testing.T) {
+	withFakeDeployer(t, &coretest.FakeDeployer{})
+	_, err := runRoot(t, "service", "deploy", "-y")
+	require.Error(t, err)
+}
