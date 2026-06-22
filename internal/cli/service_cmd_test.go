@@ -50,3 +50,19 @@ func TestDeployRequiresServiceAndTag(t *testing.T) {
 	_, err := runRoot(t, "service", "deploy", "-y")
 	require.Error(t, err)
 }
+
+func TestScaleCommand(t *testing.T) {
+	fake := &coretest.FakeDeployer{}
+	withFakeDeployer(t, fake)
+	_, err := runRoot(t, "service", "scale", "-s", "catalog", "-c", "4", "-y")
+	require.NoError(t, err)
+	require.Equal(t, []string{"stg-cluster/catalog/4"}, fake.ScaleCalls)
+}
+
+func TestRollbackCommand(t *testing.T) {
+	fake := &coretest.FakeDeployer{}
+	withFakeDeployer(t, fake)
+	_, err := runRoot(t, "service", "rollback", "-s", "catalog", "-y")
+	require.NoError(t, err)
+	require.Equal(t, []string{"stg-cluster/catalog"}, fake.RollbackCalls)
+}
