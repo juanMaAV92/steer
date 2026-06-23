@@ -40,8 +40,8 @@ func TestDeployNonInteractive(t *testing.T) {
 	out, err := runRoot(t, "service", "deploy", "-s", "catalog", "-t", "v2", "-y")
 	require.NoError(t, err)
 	require.Equal(t, []string{"stg-cluster/catalog/v2"}, fake.DeployCalls)
-	require.Contains(t, out, "v1") // preview muestra tag actual
-	require.Contains(t, out, "v2") // y el objetivo
+	require.Contains(t, out, "v1")       // preview muestra tag actual
+	require.Contains(t, out, "v2")       // y el objetivo
 	require.Contains(t, out, "rollback") // sugiere rollback
 }
 
