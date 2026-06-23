@@ -9,10 +9,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// minimalToml is a valid steer.toml with a dev environment used by non-config tests.
+const minimalToml = "[providers.aws.environments.dev]\nprofile=\"dev\"\nwritable=true\n"
+
 func runRoot(t *testing.T, args ...string) (string, error) {
 	t.Helper()
+	// Non-config commands require a steer.toml; provide a minimal one in a temp
+	// dir when none exists and the first arg is not "config".
+	needsConfig := len(args) > 0 && args[0] != "config"
+	if needsConfig {
+		if _, err := os.Stat("steer.toml"); os.IsNotExist(err) {
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "steer.toml"), []byte(minimalToml), 0o600))
+			t.Chdir(dir)
+		}
+	}
 	root := NewRootCmd("test")
 	root.AddCommand(NewConfigCmd())
+	root.AddCommand(NewServiceCmd())
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
