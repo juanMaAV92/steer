@@ -68,9 +68,6 @@ func newServiceDeployCmd() *cobra.Command {
 		Use:   "deploy",
 		Short: "Deploy a new image tag to a service (preview before applying)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if service == "" || tag == "" {
-				return fmt.Errorf("both --service and --tag are required (or run `steer service deploy` with no flags for the interactive picker)")
-			}
 			app := FromContext(cmd.Context())
 			if err := app.RequireWritable(); err != nil {
 				return err
@@ -78,6 +75,22 @@ func newServiceDeployCmd() *cobra.Command {
 			dep, cluster, err := newDeployerFn(app)
 			if err != nil {
 				return err
+			}
+
+			if service == "" || tag == "" {
+				services, err := dep.ListServices(cmd.Context(), cluster)
+				if err != nil {
+					return err
+				}
+				s, tg, ok, err := pickServiceAndTag(serviceOptions(services))
+				if err != nil {
+					return err
+				}
+				if !ok {
+					fmt.Fprintln(cmd.OutOrStdout(), "aborted")
+					return nil
+				}
+				service, tag = s, tg
 			}
 			realName := app.Config.Providers.AWS.Naming.Service(service)
 
