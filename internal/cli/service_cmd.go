@@ -92,7 +92,7 @@ func newServiceDeployCmd() *cobra.Command {
 				}
 				service, tag = s, tg
 			}
-			realName := app.Config.Providers.AWS.Naming.Service(service)
+			realName := app.Config.Providers.AWS.Naming.Service(app.EnvName, service)
 
 			current, err := dep.CurrentTag(cmd.Context(), cluster, realName)
 			if err != nil {
@@ -143,7 +143,7 @@ func newServiceScaleCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			realName := app.Config.Providers.AWS.Naming.Service(service)
+			realName := app.Config.Providers.AWS.Naming.Service(app.EnvName, service)
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "Scale %s to %d in %s\n", service, count, app.EnvName)
 			if !yes {
@@ -184,7 +184,7 @@ func newServiceRollbackCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			realName := app.Config.Providers.AWS.Naming.Service(service)
+			realName := app.Config.Providers.AWS.Naming.Service(app.EnvName, service)
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "Roll back %s in %s to previous revision\n", service, app.EnvName)
 			if !yes {

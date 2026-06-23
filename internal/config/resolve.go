@@ -25,12 +25,13 @@ func (n Naming) Cluster(env string) string {
 	return strings.ReplaceAll(tmpl, "{env}", env)
 }
 
-// Service resuelve el nombre real de un servicio a partir del nombre corto.
-func (n Naming) Service(name string) string {
+// Service resuelve el nombre real de un servicio a partir del nombre corto y el entorno.
+func (n Naming) Service(env, name string) string {
 	tmpl := n.ServiceTemplate
 	if tmpl == "" {
 		tmpl = "{name}"
 	}
+	tmpl = strings.ReplaceAll(tmpl, "{env}", env)
 	return strings.ReplaceAll(tmpl, "{name}", name)
 }
 
