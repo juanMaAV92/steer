@@ -13,6 +13,7 @@ func main() {
 	root := cli.NewRootCmd(version)
 	root.AddCommand(cli.NewConfigCmd())
 	root.AddCommand(cli.NewServiceCmd())
+	root.AddCommand(cli.NewTuiCmd())
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
