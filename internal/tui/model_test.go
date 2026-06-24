@@ -125,7 +125,10 @@ func TestConfirmEscCancels(t *testing.T) {
 }
 
 func TestDeployInputAndExecute(t *testing.T) {
-	fake := &coretest.FakeDeployer{Services: []core.ServiceStatus{{Name: "catalog"}}}
+	fake := &coretest.FakeDeployer{
+		Services:        []core.ServiceStatus{{Name: "catalog"}},
+		DeploymentValue: core.Deployment{Rollout: "COMPLETED", Running: 1, Desired: 1},
+	}
 	m := New(fake, "stg-cluster", "stg", true)
 	m.services = fake.Services
 
@@ -138,10 +141,15 @@ func TestDeployInputAndExecute(t *testing.T) {
 	}
 	require.Equal(t, "v2", m.action.input)
 
-	_, cmd := m.Update(keyMsg("enter"))
+	// enter now enters the progress view and returns a startDeployCmd
+	updated, cmd := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.Equal(t, viewDeploy, m.view)
 	require.NotNil(t, cmd)
-	done := cmd().(actionDoneMsg)
-	require.NoError(t, done.err)
+
+	// run the cmd: deploy runs synchronously and returns deployStartedMsg
+	started := cmd().(deployStartedMsg)
+	require.NoError(t, started.err)
 	require.Equal(t, []string{"stg-cluster/catalog/v2"}, fake.DeployCalls)
 }
 
@@ -180,4 +188,37 @@ func TestReadOnlyBlocksActions(t *testing.T) {
 		require.Equal(t, viewList, m.view, "key %q must not open confirm in read-only env", key)
 		require.NotEmpty(t, m.notice)
 	}
+}
+
+func TestDeployEntersProgressViewAndCompletes(t *testing.T) {
+	fake := &coretest.FakeDeployer{
+		Services:        []core.ServiceStatus{{Name: "catalog"}},
+		DeploymentValue: core.Deployment{Rollout: "COMPLETED", Running: 1, Desired: 1},
+	}
+	m := New(fake, "stg-cluster", "stg", true)
+	m.services = fake.Services
+
+	m = mustUpdate(t, m, keyMsg("d"))
+	for _, r := range "v2" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	updated, cmd := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.Equal(t, viewDeploy, m.view)
+	require.NotNil(t, cmd)
+
+	started, ok := cmd().(deployStartedMsg)
+	require.True(t, ok)
+	require.NoError(t, started.err)
+
+	updated, cmd = m.Update(started)
+	m = updated.(Model)
+	require.Equal(t, []string{"stg-cluster/catalog/v2"}, fake.DeployCalls)
+	require.NotNil(t, cmd) // primer poll
+
+	poll, ok := cmd().(deployPollMsg)
+	require.True(t, ok)
+	updated, _ = m.Update(poll)
+	m = updated.(Model)
+	require.True(t, m.deployDone)
 }

@@ -19,6 +19,7 @@ const (
 	viewList viewState = iota
 	viewDetail
 	viewConfirm
+	viewDeploy
 )
 
 type actionKind int
@@ -41,6 +42,23 @@ type actionDoneMsg struct {
 	err error
 }
 
+type deployStartedMsg struct {
+	steps  []string
+	lastID string
+	err    error
+}
+
+type deployPollMsg struct {
+	events                    []core.ServiceEvent
+	lastID                    string
+	rollout                   string
+	running, pending, desired int
+	done, failed              bool
+	err                       error
+}
+
+type deployPollTickMsg struct{}
+
 // Model es el estado de la TUI (patrón Elm de Bubble Tea).
 type Model struct {
 	dep      core.Deployer
@@ -55,6 +73,12 @@ type Model struct {
 	status   string
 	notice   string
 	err      error
+
+	// deploy progress view
+	deployLogs       []string
+	deployStatusLine string
+	deployDone       bool
+	deployLastID     string
 }
 
 // servicesMsg transporta el resultado de listar servicios.
@@ -70,6 +94,50 @@ const refreshInterval = 15 * time.Second
 
 func tickCmd() tea.Cmd {
 	return tea.Tick(refreshInterval, func(time.Time) tea.Msg { return tickMsg{} })
+}
+
+func startDeployCmd(dep core.Deployer, cluster, service, tag string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		baseline := ""
+		if evs, err := dep.ServiceEvents(ctx, cluster, service); err == nil && len(evs) > 0 {
+			baseline = evs[0].ID
+		}
+		var steps []string
+		err := dep.Deploy(ctx, cluster, service, tag, func(s string) { steps = append(steps, s) })
+		return deployStartedMsg{steps: steps, lastID: baseline, err: err}
+	}
+}
+
+func deployPollCmd(dep core.Deployer, cluster, service, lastID string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		var fresh []core.ServiceEvent
+		newLast := lastID
+		if evs, err := dep.ServiceEvents(ctx, cluster, service); err == nil {
+			for _, e := range evs {
+				if e.ID == lastID {
+					break
+				}
+				fresh = append(fresh, e)
+			}
+			if len(evs) > 0 {
+				newLast = evs[0].ID
+			}
+		}
+		d, err := dep.DeploymentStatus(ctx, cluster, service)
+		return deployPollMsg{
+			events: fresh, lastID: newLast,
+			rollout: d.Rollout, running: d.Running, pending: d.Pending, desired: d.Desired,
+			done:   d.Rollout == "COMPLETED" && d.Running >= d.Desired,
+			failed: d.Rollout == "FAILED",
+			err:    err,
+		}
+	}
+}
+
+func deployTickCmd() tea.Cmd {
+	return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return deployPollTickMsg{} })
 }
 
 // New crea el modelo inicial.
@@ -115,6 +183,49 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.loadServicesCmd()
 
+	case deployStartedMsg:
+		for _, s := range msg.steps {
+			m.deployLogs = append(m.deployLogs, render.Dim("[*] "+s))
+		}
+		if msg.err != nil {
+			m.deployLogs = append(m.deployLogs, render.Danger("error: "+msg.err.Error()))
+			m.deployDone = true
+			return m, nil
+		}
+		m.deployLastID = msg.lastID
+		return m, deployPollCmd(m.dep, m.cluster, m.action.service, m.deployLastID)
+
+	case deployPollMsg:
+		if msg.err != nil {
+			m.deployLogs = append(m.deployLogs, render.Danger("error: "+msg.err.Error()))
+			m.deployDone = true
+			return m, m.loadServicesCmd()
+		}
+		for i := len(msg.events) - 1; i >= 0; i-- { // del más antiguo al más nuevo
+			e := msg.events[i]
+			m.deployLogs = append(m.deployLogs, render.Dim("["+e.At.Format("15:04:05")+"] "+e.Message))
+		}
+		m.deployLastID = msg.lastID
+		m.deployStatusLine = "Rollout: " + rolloutColored(msg.rollout) +
+			" | Running: " + itoa(msg.running) + " | Pending: " + itoa(msg.pending) + " | Desired: " + itoa(msg.desired)
+		if msg.done {
+			m.deployLogs = append(m.deployLogs, render.Success("✓ deployment completed"))
+			m.deployDone = true
+			return m, m.loadServicesCmd()
+		}
+		if msg.failed {
+			m.deployLogs = append(m.deployLogs, render.Danger("✗ deployment failed"))
+			m.deployDone = true
+			return m, m.loadServicesCmd()
+		}
+		return m, deployTickCmd()
+
+	case deployPollTickMsg:
+		if m.view == viewDeploy && !m.deployDone {
+			return m, deployPollCmd(m.dep, m.cluster, m.action.service, m.deployLastID)
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -134,6 +245,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.action.kind != actionRollback && m.action.input == "" {
 				return m, nil // exige input para deploy/scale
 			}
+			if m.action.kind == actionDeploy {
+				m.view = viewDeploy
+				m.deployLogs = nil
+				m.deployStatusLine = ""
+				m.deployDone = false
+				return m, startDeployCmd(m.dep, m.cluster, m.action.service, m.action.input)
+			}
 			return m, m.runActionCmd()
 		case tea.KeyBackspace:
 			if n := len(m.action.input); n > 0 {
@@ -143,6 +261,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.action.kind != actionRollback {
 				m.action.input += string(msg.Runes)
 			}
+		}
+		return m, nil
+	}
+
+	// (1b) deploy-view block
+	if m.view == viewDeploy {
+		switch msg.Type {
+		case tea.KeyCtrlC:
+			return m, tea.Quit
+		case tea.KeyEsc, tea.KeyEnter:
+			m.view = viewList
+			return m, m.loadServicesCmd()
 		}
 		return m, nil
 	}
@@ -243,6 +373,8 @@ func (m Model) View() string {
 		return m.detailView()
 	case viewConfirm:
 		return m.confirmView()
+	case viewDeploy:
+		return m.deployView()
 	default:
 		return m.listView()
 	}
@@ -300,4 +432,34 @@ func (m Model) confirmView() string {
 		b.WriteString(render.Dim("type a number · enter to scale · esc to cancel"))
 	}
 	return b.String()
+}
+
+func (m Model) deployView() string {
+	var b strings.Builder
+	b.WriteString(render.Bold("Deploy "+m.action.service) + "\n\n")
+	for _, l := range m.deployLogs {
+		b.WriteString(l + "\n")
+	}
+	if m.deployStatusLine != "" {
+		b.WriteString(m.deployStatusLine + "\n")
+	}
+	if m.deployDone {
+		b.WriteString(render.Dim("\ndone · esc/enter to go back · q to quit"))
+	} else {
+		b.WriteString(render.Dim("\nwatching… · esc to background · q to quit"))
+	}
+	return b.String()
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }
+
+func rolloutColored(state string) string {
+	switch state {
+	case "COMPLETED":
+		return render.Success(state)
+	case "FAILED":
+		return render.Danger(state)
+	default:
+		return render.Accent(state)
+	}
 }
