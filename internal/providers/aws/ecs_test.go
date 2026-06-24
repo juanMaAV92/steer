@@ -208,3 +208,30 @@ func TestListServicesPaginates(t *testing.T) {
 	require.GreaterOrEqual(t, len(got), 1) // recorrió 2 páginas sin colgarse
 	require.Equal(t, 2, f.listIdx)         // consumió ambas páginas
 }
+
+func TestListServicesEnrichesPendingStatusTag(t *testing.T) {
+	f := &fakeECS{
+		listPages: []*ecs.ListServicesOutput{{ServiceArns: []string{"arn:svc/catalog"}}},
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			ServiceName:    awssdk.String("catalog"),
+			RunningCount:   1,
+			DesiredCount:   2,
+			PendingCount:   1,
+			Status:         awssdk.String("ACTIVE"),
+			TaskDefinition: awssdk.String("arn:td/catalog:5"),
+		}}},
+		taskDefOut: &ecs.DescribeTaskDefinitionOutput{TaskDefinition: &ecstypes.TaskDefinition{
+			ContainerDefinitions: []ecstypes.ContainerDefinition{{
+				Image: awssdk.String("host/catalog:v1.2.3"),
+			}},
+		}},
+	}
+	d := newDeployer(f)
+
+	got, err := d.ListServices(context.Background(), "stg-cluster")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, 1, got[0].Pending)
+	require.Equal(t, "ACTIVE", got[0].Status)
+	require.Equal(t, "v1.2.3", got[0].Tag)
+}

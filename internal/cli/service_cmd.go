@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/juanMaAV92/steer/internal/core"
@@ -50,11 +51,20 @@ func newServiceStatusCmd() *cobra.Command {
 				return err
 			}
 			out := cmd.OutOrStdout()
+			headers := []string{"", "SERVICE", "DESIRED", "RUNNING", "PENDING", "STATUS", "TAG"}
+			rows := make([][]string, 0, len(services))
 			for _, s := range services {
-				fmt.Fprintf(out, "%s %s\t%d/%d\n",
+				rows = append(rows, []string{
 					render.Symbol(render.StatusLevel(s.Running, s.Desired)),
-					s.Name, s.Running, s.Desired)
+					s.Name,
+					strconv.Itoa(s.Desired),
+					strconv.Itoa(s.Running),
+					strconv.Itoa(s.Pending),
+					s.Status,
+					render.Accent(s.Tag),
+				})
 			}
+			fmt.Fprintln(out, render.Table(headers, rows))
 			return nil
 		},
 	}

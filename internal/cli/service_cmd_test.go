@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/juanMaAV92/steer/internal/core"
@@ -21,16 +20,18 @@ func withFakeDeployer(t *testing.T, fake core.Deployer) {
 func TestServiceStatusListsServices(t *testing.T) {
 	withFakeDeployer(t, &coretest.FakeDeployer{
 		Services: []core.ServiceStatus{
-			{Name: "catalog", Running: 2, Desired: 2},
-			{Name: "billing", Running: 0, Desired: 1},
+			{Name: "catalog", Running: 2, Desired: 2, Status: "ACTIVE", Tag: "v1.0.0"},
+			{Name: "billing", Running: 0, Desired: 1, Status: "ACTIVE"},
 		},
 	})
 
 	out, err := runRoot(t, "service", "status")
 	require.NoError(t, err)
+	require.Contains(t, out, "SERVICE") // cabecera de la tabla
+	require.Contains(t, out, "TAG")
 	require.Contains(t, out, "catalog")
 	require.Contains(t, out, "billing")
-	require.True(t, strings.Contains(out, "2/2"))
+	require.Contains(t, out, "v1.0.0") // columna de tag
 }
 
 func TestDeployNonInteractive(t *testing.T) {
