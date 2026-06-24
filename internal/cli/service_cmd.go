@@ -103,7 +103,7 @@ func newServiceStatusCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "refresh continuously")
-	cmd.Flags().IntVar(&interval, "interval", 3, "refresh interval in seconds for --watch")
+	cmd.Flags().IntVar(&interval, "interval", 15, "refresh interval in seconds for --watch")
 	return cmd
 }
 
