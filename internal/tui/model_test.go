@@ -45,3 +45,36 @@ func mustUpdate(t *testing.T, m Model, msg tea.Msg) Model {
 	updated, _ := m.Update(msg)
 	return updated.(Model)
 }
+
+func TestQuitKeys(t *testing.T) {
+	m := newTestModel(nil)
+	for _, key := range []string{"q", "ctrl+c"} {
+		_, cmd := m.Update(keyMsg(key))
+		require.NotNil(t, cmd, "expected quit cmd for %q", key)
+	}
+}
+
+func TestRefreshKeyReloads(t *testing.T) {
+	m := newTestModel([]core.ServiceStatus{{Name: "a"}})
+	_, cmd := m.Update(keyMsg("r"))
+	require.NotNil(t, cmd) // dispara recarga
+}
+
+func TestTickReloadsAndReschedules(t *testing.T) {
+	m := newTestModel(nil)
+	_, cmd := m.Update(tickMsg{})
+	require.NotNil(t, cmd)
+}
+
+func keyMsg(s string) tea.KeyMsg {
+	switch s {
+	case "ctrl+c":
+		return tea.KeyMsg{Type: tea.KeyCtrlC}
+	case "enter":
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	case "esc":
+		return tea.KeyMsg{Type: tea.KeyEsc}
+	default:
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	}
+}

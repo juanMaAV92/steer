@@ -3,6 +3,7 @@ package tui
 
 import (
 	"context"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/juanMaAV92/steer/internal/core"
@@ -34,6 +35,15 @@ type servicesMsg struct {
 	err      error
 }
 
+// tickMsg dispara un auto-refresh periódico.
+type tickMsg struct{}
+
+const refreshInterval = 15 * time.Second
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(refreshInterval, func(time.Time) tea.Msg { return tickMsg{} })
+}
+
 // New crea el modelo inicial.
 func New(dep core.Deployer, cluster, env string) Model {
 	return Model{dep: dep, cluster: cluster, env: env, loading: true}
@@ -48,7 +58,7 @@ func (m Model) loadServicesCmd() tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
-	return m.loadServicesCmd()
+	return tea.Batch(m.loadServicesCmd(), tickCmd())
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -65,6 +75,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tickMsg:
+		return m, tea.Batch(m.loadServicesCmd(), tickCmd())
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -73,6 +86,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "r":
+		m.loading = true
+		return m, m.loadServicesCmd()
 	case "j", "down":
 		if m.cursor < len(m.services)-1 {
 			m.cursor++
