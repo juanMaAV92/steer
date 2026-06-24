@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/juanMaAV92/steer/internal/core"
+	"github.com/juanMaAV92/steer/internal/render"
 )
 
 type viewState int
@@ -226,7 +228,67 @@ func (m Model) selected() (core.ServiceStatus, bool) {
 	return m.services[m.cursor], true
 }
 
-// View implements tea.Model (placeholder).
 func (m Model) View() string {
-	return ""
+	if m.err != nil {
+		return render.Danger("error: "+m.err.Error()) + "\n" + render.Dim("press q to quit")
+	}
+	switch m.view {
+	case viewDetail:
+		return m.detailView()
+	case viewConfirm:
+		return m.confirmView()
+	default:
+		return m.listView()
+	}
+}
+
+func (m Model) listView() string {
+	var b strings.Builder
+	b.WriteString(render.Bold("steer") + "  " + render.Dim(m.cluster) + "\n")
+	for i, s := range m.services {
+		cursor := "  "
+		if i == m.cursor {
+			cursor = render.Accent("> ")
+		}
+		line := render.Symbol(render.StatusLevel(s.Running, s.Desired))
+		b.WriteString(cursor + line + " " + s.Name + "  " +
+			strconv.Itoa(s.Running) + "/" + strconv.Itoa(s.Desired) + "  " + render.Dim(s.Tag) + "\n")
+	}
+	if m.status != "" {
+		b.WriteString("\n" + render.Success(m.status) + "\n")
+	}
+	b.WriteString(render.Dim("\n↑/↓ move · enter detail · d deploy · s scale · R rollback · r refresh · q quit"))
+	return b.String()
+}
+
+func (m Model) detailView() string {
+	s, ok := m.selected()
+	if !ok {
+		return render.Dim("no service selected\n") + render.Dim("esc to go back")
+	}
+	var b strings.Builder
+	b.WriteString(render.Bold(s.Name) + "\n\n")
+	b.WriteString("running:  " + strconv.Itoa(s.Running) + "/" + strconv.Itoa(s.Desired) + "\n")
+	b.WriteString("pending:  " + strconv.Itoa(s.Pending) + "\n")
+	b.WriteString("status:   " + s.Status + "\n")
+	b.WriteString("tag:      " + render.Accent(s.Tag) + "\n")
+	b.WriteString(render.Dim("\nesc to go back"))
+	return b.String()
+}
+
+func (m Model) confirmView() string {
+	a := m.action
+	var b strings.Builder
+	switch a.kind {
+	case actionRollback:
+		b.WriteString("Roll back " + render.Bold(a.service) + " to previous revision?\n")
+		b.WriteString(render.Dim("enter to confirm · esc to cancel"))
+	case actionDeploy:
+		b.WriteString("Deploy " + render.Bold(a.service) + " — image tag: " + render.Accent(a.input) + "\n")
+		b.WriteString(render.Dim("type the tag · enter to deploy · esc to cancel"))
+	case actionScale:
+		b.WriteString("Scale " + render.Bold(a.service) + " — desired count: " + render.Accent(a.input) + "\n")
+		b.WriteString(render.Dim("type a number · enter to scale · esc to cancel"))
+	}
+	return b.String()
 }
