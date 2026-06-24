@@ -69,10 +69,28 @@ func (d *ECSDeployer) ListServices(ctx context.Context, cluster string) ([]core.
 				Name:    awssdk.ToString(s.ServiceName),
 				Running: int(s.RunningCount),
 				Desired: int(s.DesiredCount),
+				Pending: int(s.PendingCount),
+				Status:  awssdk.ToString(s.Status),
+				Tag:     d.tagForTaskDef(ctx, awssdk.ToString(s.TaskDefinition)),
 			})
 		}
 	}
 	return out, nil
+}
+
+// tagForTaskDef resuelve el tag de imagen de una task def; "" si no se puede.
+func (d *ECSDeployer) tagForTaskDef(ctx context.Context, tdArn string) string {
+	if tdArn == "" {
+		return ""
+	}
+	out, err := d.api.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{
+		TaskDefinition: awssdk.String(tdArn),
+	})
+	if err != nil || out == nil || out.TaskDefinition == nil ||
+		len(out.TaskDefinition.ContainerDefinitions) == 0 {
+		return ""
+	}
+	return tagFromImage(awssdk.ToString(out.TaskDefinition.ContainerDefinitions[0].Image))
 }
 
 func chunk(xs []string, n int) [][]string {

@@ -9,6 +9,9 @@ type ServiceStatus struct {
 	Name    string
 	Running int
 	Desired int
+	Pending int
+	Status  string // estado del servicio (p.ej. ACTIVE)
+	Tag     string // tag de imagen en uso (vacío si no se pudo resolver)
 }
 
 // Deployer despliega y consulta servicios de cómputo (ECS / Container Apps / Cloud Run).

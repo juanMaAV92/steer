@@ -25,13 +25,19 @@ func TestEnvUnknown(t *testing.T) {
 func TestNamingDefaults(t *testing.T) {
 	var n Naming // plantillas vacías → defaults
 	require.Equal(t, "stg-cluster", n.Cluster("stg"))
-	require.Equal(t, "catalog", n.Service("catalog"))
+	require.Equal(t, "catalog", n.Service("stg", "catalog"))
 }
 
 func TestNamingTemplates(t *testing.T) {
 	n := Naming{ClusterTemplate: "prod-{env}-ecs", ServiceTemplate: "svc-{name}"}
 	require.Equal(t, "prod-stg-ecs", n.Cluster("stg"))
-	require.Equal(t, "svc-catalog", n.Service("catalog"))
+	require.Equal(t, "svc-catalog", n.Service("stg", "catalog"))
+}
+
+func TestServiceTemplateWithEnv(t *testing.T) {
+	n := Naming{ServiceTemplate: "nao-v2-{env}-{name}"}
+	require.Equal(t, "nao-v2-dev-audit-ms", n.Service("dev", "audit-ms"))
+	require.Equal(t, "nao-v2-staging-catalog-ms", n.Service("staging", "catalog-ms"))
 }
 
 func TestCandidatePaths(t *testing.T) {
