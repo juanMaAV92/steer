@@ -78,3 +78,20 @@ func keyMsg(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 	}
 }
+
+func TestEnterOpensDetailEscReturns(t *testing.T) {
+	m := newTestModel(nil)
+	m.services = []core.ServiceStatus{{Name: "catalog"}}
+
+	m = mustUpdate(t, m, keyMsg("enter"))
+	require.Equal(t, viewDetail, m.view)
+
+	m = mustUpdate(t, m, keyMsg("esc"))
+	require.Equal(t, viewList, m.view)
+}
+
+func TestEnterOnEmptyListDoesNothing(t *testing.T) {
+	m := newTestModel(nil)
+	m = mustUpdate(t, m, keyMsg("enter"))
+	require.Equal(t, viewList, m.view)
+}

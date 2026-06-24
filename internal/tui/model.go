@@ -88,6 +88,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
+	}
+
+	if m.view == viewDetail {
+		if msg.String() == "esc" {
+			m.view = viewList
+		}
+		return m, nil
+	}
+
+	// viewList
+	switch msg.String() {
 	case "r":
 		m.loading = true
 		return m, m.loadServicesCmd()
@@ -99,8 +110,20 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor > 0 {
 			m.cursor--
 		}
+	case "enter":
+		if len(m.services) > 0 {
+			m.view = viewDetail
+		}
 	}
 	return m, nil
+}
+
+// selected devuelve el servicio bajo el cursor (ok=false si la lista está vacía).
+func (m Model) selected() (core.ServiceStatus, bool) {
+	if m.cursor < 0 || m.cursor >= len(m.services) {
+		return core.ServiceStatus{}, false
+	}
+	return m.services[m.cursor], true
 }
 
 // View implements tea.Model (placeholder).
