@@ -3,6 +3,8 @@ package tui
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -116,11 +118,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// (1) confirm-view block: captures all runes before global q/ctrl+c
+	if m.view == viewConfirm {
+		switch msg.Type {
+		case tea.KeyCtrlC:
+			return m, tea.Quit
+		case tea.KeyEsc:
+			m.view = viewList
+			return m, nil
+		case tea.KeyEnter:
+			if m.action.kind != actionRollback && m.action.input == "" {
+				return m, nil // exige input para deploy/scale
+			}
+			return m, m.runActionCmd()
+		case tea.KeyBackspace:
+			if n := len(m.action.input); n > 0 {
+				m.action.input = m.action.input[:n-1]
+			}
+		case tea.KeyRunes:
+			if m.action.kind != actionRollback {
+				m.action.input += string(msg.Runes)
+			}
+		}
+		return m, nil
+	}
+
+	// (2) global q/ctrl+c quit
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	}
 
+	// (3) viewDetail block
 	if m.view == viewDetail {
 		if msg.String() == "esc" {
 			m.view = viewList
@@ -128,17 +157,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if m.view == viewConfirm {
-		switch msg.String() {
-		case "esc":
-			m.view = viewList
-		case "enter":
-			return m, m.runActionCmd()
-		}
-		return m, nil
-	}
-
-	// viewList
+	// (4) viewList switch
 	switch msg.String() {
 	case "r":
 		m.loading = true
@@ -146,6 +165,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "R":
 		if s, ok := m.selected(); ok {
 			m.action = pendingAction{kind: actionRollback, service: s.Name}
+			m.view = viewConfirm
+		}
+	case "d":
+		if s, ok := m.selected(); ok {
+			m.action = pendingAction{kind: actionDeploy, service: s.Name}
+			m.view = viewConfirm
+		}
+	case "s":
+		if s, ok := m.selected(); ok {
+			m.action = pendingAction{kind: actionScale, service: s.Name}
 			m.view = viewConfirm
 		}
 	case "j", "down":
@@ -174,6 +203,16 @@ func (m Model) runActionCmd() tea.Cmd {
 		case actionRollback:
 			err := dep.Rollback(ctx, cluster, a.service)
 			return actionDoneMsg{msg: "rolled back " + a.service, err: err}
+		case actionDeploy:
+			err := dep.Deploy(ctx, cluster, a.service, a.input, nil)
+			return actionDoneMsg{msg: "deployed " + a.service + " -> " + a.input, err: err}
+		case actionScale:
+			n, convErr := strconv.Atoi(a.input)
+			if convErr != nil {
+				return actionDoneMsg{err: fmt.Errorf("invalid count %q", a.input)}
+			}
+			err := dep.Scale(ctx, cluster, a.service, n)
+			return actionDoneMsg{msg: fmt.Sprintf("scaled %s to %d", a.service, n), err: err}
 		}
 		return actionDoneMsg{err: nil}
 	}

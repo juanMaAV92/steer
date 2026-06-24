@@ -123,3 +123,50 @@ func TestConfirmEscCancels(t *testing.T) {
 	m = mustUpdate(t, m, keyMsg("esc"))
 	require.Equal(t, viewList, m.view)
 }
+
+func TestDeployInputAndExecute(t *testing.T) {
+	fake := &coretest.FakeDeployer{Services: []core.ServiceStatus{{Name: "catalog"}}}
+	m := New(fake, "stg-cluster", "stg")
+	m.services = fake.Services
+
+	m = mustUpdate(t, m, keyMsg("d")) // abre input de deploy
+	require.Equal(t, viewConfirm, m.view)
+	require.Equal(t, actionDeploy, m.action.kind)
+
+	for _, r := range "v2" { // teclea el tag
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	require.Equal(t, "v2", m.action.input)
+
+	_, cmd := m.Update(keyMsg("enter"))
+	require.NotNil(t, cmd)
+	done := cmd().(actionDoneMsg)
+	require.NoError(t, done.err)
+	require.Equal(t, []string{"stg-cluster/catalog/v2"}, fake.DeployCalls)
+}
+
+func TestScaleInputAndExecute(t *testing.T) {
+	fake := &coretest.FakeDeployer{Services: []core.ServiceStatus{{Name: "catalog"}}}
+	m := New(fake, "stg-cluster", "stg")
+	m.services = fake.Services
+
+	m = mustUpdate(t, m, keyMsg("s"))
+	for _, r := range "3" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	_, cmd := m.Update(keyMsg("enter"))
+	done := cmd().(actionDoneMsg)
+	require.NoError(t, done.err)
+	require.Equal(t, []string{"stg-cluster/catalog/3"}, fake.ScaleCalls)
+}
+
+func TestInputBackspace(t *testing.T) {
+	m := newTestModel([]core.ServiceStatus{{Name: "catalog"}})
+	m.services = []core.ServiceStatus{{Name: "catalog"}}
+	m = mustUpdate(t, m, keyMsg("d"))
+	for _, r := range "v22" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	require.Equal(t, "v2", m.action.input)
+}
