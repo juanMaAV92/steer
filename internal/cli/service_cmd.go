@@ -68,24 +68,36 @@ func newServiceStatusCmd() *cobra.Command {
 				return err
 			}
 			out := cmd.OutOrStdout()
-			showOnce := func() error {
+			render1 := func() (string, error) {
 				services, err := dep.ListServices(cmd.Context(), cluster)
+				if err != nil {
+					return "", err
+				}
+				return serviceStatusTable(services) + "\n", nil
+			}
+			if !watch {
+				content, err := render1()
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(out, serviceStatusTable(services))
+				fmt.Fprint(out, content)
 				return nil
 			}
-			if !watch {
-				return showOnce()
-			}
+			// --watch: redibuja en el sitio subiendo el cursor las líneas previas.
+			header := fmt.Sprintf("%s  %s  %s\n", render.Bold("steer"), render.Dim(cluster),
+				render.Dim(fmt.Sprintf("(refresh %ds, Ctrl+C to stop)", interval)))
+			prevLines := 0
 			for {
-				fmt.Fprint(out, "\033[H\033[2J") // limpia la pantalla
-				fmt.Fprintf(out, "%s  %s  (refresh %ds, Ctrl+C para salir)\n",
-					render.Bold("steer"), render.Dim(cluster), interval)
-				if err := showOnce(); err != nil {
+				content, err := render1()
+				if err != nil {
 					return err
 				}
+				frame := header + content
+				if prevLines > 0 {
+					fmt.Fprintf(out, "\033[%dA\033[J", prevLines) // sube N líneas y limpia hacia abajo
+				}
+				fmt.Fprint(out, frame)
+				prevLines = strings.Count(frame, "\n")
 				time.Sleep(time.Duration(interval) * time.Second)
 			}
 		},
@@ -169,30 +181,66 @@ func newServiceDeployCmd() *cobra.Command {
 	return cmd
 }
 
-// watchRollout sigue el rollout de un servicio hasta COMPLETED o FAILED,
-// actualizando una sola línea en el sitio (no la reimprime).
+// watchRollout sigue el rollout: hace streaming de los eventos del servicio (como un
+// log de deploy) e imprime la línea de status solo cuando cambia, hasta COMPLETED/FAILED.
 func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster, service string, interval int) error {
 	fmt.Fprintln(out, render.Dim("monitoring rollout (Ctrl+C to stop)..."))
+
+	// Marca el último evento ya existente para solo mostrar los nuevos.
+	lastID := ""
+	if evs, err := dep.ServiceEvents(ctx, cluster, service); err == nil && len(evs) > 0 {
+		lastID = evs[0].ID
+	}
+
+	lastStatus := ""
 	for {
+		// Eventos nuevos (ECS los entrega más recientes primero).
+		if evs, err := dep.ServiceEvents(ctx, cluster, service); err == nil {
+			var fresh []core.ServiceEvent
+			for _, e := range evs {
+				if e.ID == lastID {
+					break
+				}
+				fresh = append(fresh, e)
+			}
+			if len(fresh) > 0 {
+				lastID = fresh[0].ID
+			}
+			for i := len(fresh) - 1; i >= 0; i-- { // del más antiguo al más nuevo
+				printEvent(out, fresh[i])
+			}
+		}
+
 		d, err := dep.DeploymentStatus(ctx, cluster, service)
 		if err != nil {
-			fmt.Fprintln(out)
 			return err
 		}
-		// \r vuelve al inicio, \033[K limpia hasta fin de línea → reescribe en el sitio.
-		fmt.Fprintf(out, "\r\033[KRollout: %s | Running: %d | Pending: %d | Desired: %d",
+		status := fmt.Sprintf("Rollout: %s | Running: %d | Pending: %d | Desired: %d",
 			rolloutColor(d.Rollout), d.Running, d.Pending, d.Desired)
-		switch d.Rollout {
-		case "COMPLETED":
-			fmt.Fprintln(out)
-			fmt.Fprintln(out, render.Success("✓ rollout completed"))
+		if status != lastStatus {
+			fmt.Fprintln(out, status)
+			lastStatus = status
+		}
+
+		if d.Rollout == "COMPLETED" && d.Running >= d.Desired {
+			fmt.Fprintln(out, render.Success("✓ deployment completed"))
 			return nil
-		case "FAILED":
-			fmt.Fprintln(out)
-			return fmt.Errorf("rollout failed for %q", service)
+		}
+		if d.Rollout == "FAILED" {
+			return fmt.Errorf("deployment failed for %q", service)
 		}
 		time.Sleep(time.Duration(interval) * time.Second)
 	}
+}
+
+// printEvent imprime un evento de servicio con timestamp; rojo si parece error.
+func printEvent(out io.Writer, e core.ServiceEvent) {
+	line := fmt.Sprintf("[%s] %s", e.At.Format("15:04:05"), e.Message)
+	if strings.Contains(e.Message, "unable to place") || strings.Contains(e.Message, "ResourceInitializationError") {
+		fmt.Fprintln(out, render.Danger(line))
+		return
+	}
+	fmt.Fprintln(out, render.Dim(line))
 }
 
 func rolloutColor(state string) string {

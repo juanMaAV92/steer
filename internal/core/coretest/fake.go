@@ -13,7 +13,8 @@ type FakeDeployer struct {
 	Services        []core.ServiceStatus
 	CurrentTagValue string
 	DeployErr       error
-	DeploymentValue core.Deployment // devuelto por DeploymentStatus
+	DeploymentValue core.Deployment     // devuelto por DeploymentStatus
+	Events          []core.ServiceEvent // devuelto por ServiceEvents
 
 	DeployCalls   []string // "cluster/service/tag"
 	ScaleCalls    []string // "cluster/service/count"
@@ -48,4 +49,8 @@ func (f *FakeDeployer) Rollback(_ context.Context, cluster, service string) erro
 
 func (f *FakeDeployer) DeploymentStatus(_ context.Context, _, _ string) (core.Deployment, error) {
 	return f.DeploymentValue, nil
+}
+
+func (f *FakeDeployer) ServiceEvents(_ context.Context, _, _ string) ([]core.ServiceEvent, error) {
+	return f.Events, nil
 }

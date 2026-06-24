@@ -209,6 +209,24 @@ func TestListServicesPaginates(t *testing.T) {
 	require.Equal(t, 2, f.listIdx)         // consumió ambas páginas
 }
 
+func TestServiceEventsNewestFirst(t *testing.T) {
+	f := &fakeECS{
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			Events: []ecstypes.ServiceEvent{
+				{Id: awssdk.String("e2"), Message: awssdk.String("reached a steady state")},
+				{Id: awssdk.String("e1"), Message: awssdk.String("started 1 tasks")},
+			},
+		}}},
+	}
+	d := newDeployer(f)
+
+	evs, err := d.ServiceEvents(context.Background(), "stg-cluster", "catalog")
+	require.NoError(t, err)
+	require.Len(t, evs, 2)
+	require.Equal(t, "e2", evs[0].ID)
+	require.Equal(t, "reached a steady state", evs[0].Message)
+}
+
 func TestDeploymentStatusReadsPrimary(t *testing.T) {
 	f := &fakeECS{
 		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{

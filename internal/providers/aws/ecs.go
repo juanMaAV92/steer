@@ -109,6 +109,29 @@ func (d *ECSDeployer) DeploymentStatus(ctx context.Context, cluster, service str
 	}, nil
 }
 
+// ServiceEvents devuelve los eventos del servicio (ECS los entrega más recientes primero).
+func (d *ECSDeployer) ServiceEvents(ctx context.Context, cluster, service string) ([]core.ServiceEvent, error) {
+	desc, err := d.api.DescribeServices(ctx, &ecs.DescribeServicesInput{
+		Cluster:  awssdk.String(cluster),
+		Services: []string{service},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(desc.Services) == 0 {
+		return nil, fmt.Errorf("service %q not found in cluster %q", service, cluster)
+	}
+	var out []core.ServiceEvent
+	for _, e := range desc.Services[0].Events {
+		out = append(out, core.ServiceEvent{
+			ID:      awssdk.ToString(e.Id),
+			At:      awssdk.ToTime(e.CreatedAt),
+			Message: awssdk.ToString(e.Message),
+		})
+	}
+	return out, nil
+}
+
 // tagForTaskDef resuelve el tag de imagen de una task def; "" si no se puede.
 func (d *ECSDeployer) tagForTaskDef(ctx context.Context, tdArn string) string {
 	if tdArn == "" {

@@ -2,7 +2,17 @@
 // los providers (AWS hoy; Azure/GCP en el futuro) y consumen CLI y TUI.
 package core
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// ServiceEvent es un evento del servicio (mensajes de despliegue de ECS).
+type ServiceEvent struct {
+	ID      string
+	At      time.Time
+	Message string
+}
 
 // ServiceStatus es el estado de un servicio/contenedor.
 type ServiceStatus struct {
@@ -33,4 +43,6 @@ type Deployer interface {
 	Scale(ctx context.Context, cluster, service string, count int) error
 	Rollback(ctx context.Context, cluster, service string) error
 	DeploymentStatus(ctx context.Context, cluster, service string) (Deployment, error)
+	// ServiceEvents devuelve los eventos del servicio, más recientes primero.
+	ServiceEvents(ctx context.Context, cluster, service string) ([]ServiceEvent, error)
 }
