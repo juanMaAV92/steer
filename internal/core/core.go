@@ -14,6 +14,14 @@ type ServiceStatus struct {
 	Tag     string // tag de imagen en uso (vacío si no se pudo resolver)
 }
 
+// Deployment es el estado del despliegue activo (rollout) de un servicio.
+type Deployment struct {
+	Rollout string // p.ej. IN_PROGRESS, COMPLETED, FAILED
+	Running int
+	Pending int
+	Desired int
+}
+
 // Deployer despliega y consulta servicios de cómputo (ECS / Container Apps / Cloud Run).
 type Deployer interface {
 	ListServices(ctx context.Context, cluster string) ([]ServiceStatus, error)
@@ -21,4 +29,5 @@ type Deployer interface {
 	Deploy(ctx context.Context, cluster, service, tag string) error
 	Scale(ctx context.Context, cluster, service string, count int) error
 	Rollback(ctx context.Context, cluster, service string) error
+	DeploymentStatus(ctx context.Context, cluster, service string) (Deployment, error)
 }

@@ -78,6 +78,37 @@ func (d *ECSDeployer) ListServices(ctx context.Context, cluster string) ([]core.
 	return out, nil
 }
 
+// DeploymentStatus devuelve el estado del rollout activo (PRIMARY) de un servicio.
+func (d *ECSDeployer) DeploymentStatus(ctx context.Context, cluster, service string) (core.Deployment, error) {
+	desc, err := d.api.DescribeServices(ctx, &ecs.DescribeServicesInput{
+		Cluster:  awssdk.String(cluster),
+		Services: []string{service},
+	})
+	if err != nil {
+		return core.Deployment{}, err
+	}
+	if len(desc.Services) == 0 {
+		return core.Deployment{}, fmt.Errorf("service %q not found in cluster %q", service, cluster)
+	}
+	s := desc.Services[0]
+	for _, dep := range s.Deployments {
+		if awssdk.ToString(dep.Status) == "PRIMARY" {
+			return core.Deployment{
+				Rollout: string(dep.RolloutState),
+				Running: int(dep.RunningCount),
+				Pending: int(dep.PendingCount),
+				Desired: int(s.DesiredCount), // desired autoritativo del servicio
+			}, nil
+		}
+	}
+	// Sin deployment PRIMARY: reporta los contadores del servicio.
+	return core.Deployment{
+		Running: int(s.RunningCount),
+		Pending: int(s.PendingCount),
+		Desired: int(s.DesiredCount),
+	}, nil
+}
+
 // tagForTaskDef resuelve el tag de imagen de una task def; "" si no se puede.
 func (d *ECSDeployer) tagForTaskDef(ctx context.Context, tdArn string) string {
 	if tdArn == "" {

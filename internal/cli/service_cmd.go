@@ -7,6 +7,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/juanMaAV92/steer/internal/providers/aws"
@@ -35,7 +36,27 @@ func NewServiceCmd() *cobra.Command {
 	return cmd
 }
 
+// serviceStatusTable construye la tabla de estado de servicios.
+func serviceStatusTable(services []core.ServiceStatus) string {
+	headers := []string{"", "SERVICE", "DESIRED", "RUNNING", "PENDING", "STATUS", "TAG"}
+	rows := make([][]string, 0, len(services))
+	for _, s := range services {
+		rows = append(rows, []string{
+			render.Symbol(render.StatusLevel(s.Running, s.Desired)),
+			s.Name,
+			strconv.Itoa(s.Desired),
+			strconv.Itoa(s.Running),
+			strconv.Itoa(s.Pending),
+			s.Status,
+			render.Accent(s.Tag),
+		})
+	}
+	return render.Table(headers, rows)
+}
+
 func newServiceStatusCmd() *cobra.Command {
+	var watch bool
+	var interval int
 	cmd := &cobra.Command{
 		Use:     "status",
 		Aliases: []string{"ls"},
@@ -46,34 +67,38 @@ func newServiceStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			services, err := dep.ListServices(cmd.Context(), cluster)
-			if err != nil {
-				return err
-			}
 			out := cmd.OutOrStdout()
-			headers := []string{"", "SERVICE", "DESIRED", "RUNNING", "PENDING", "STATUS", "TAG"}
-			rows := make([][]string, 0, len(services))
-			for _, s := range services {
-				rows = append(rows, []string{
-					render.Symbol(render.StatusLevel(s.Running, s.Desired)),
-					s.Name,
-					strconv.Itoa(s.Desired),
-					strconv.Itoa(s.Running),
-					strconv.Itoa(s.Pending),
-					s.Status,
-					render.Accent(s.Tag),
-				})
+			showOnce := func() error {
+				services, err := dep.ListServices(cmd.Context(), cluster)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(out, serviceStatusTable(services))
+				return nil
 			}
-			fmt.Fprintln(out, render.Table(headers, rows))
-			return nil
+			if !watch {
+				return showOnce()
+			}
+			for {
+				fmt.Fprint(out, "\033[H\033[2J") // limpia la pantalla
+				fmt.Fprintf(out, "%s  %s  (refresh %ds, Ctrl+C para salir)\n",
+					render.Bold("steer"), render.Dim(cluster), interval)
+				if err := showOnce(); err != nil {
+					return err
+				}
+				time.Sleep(time.Duration(interval) * time.Second)
+			}
 		},
 	}
+	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "refresh continuously")
+	cmd.Flags().IntVar(&interval, "interval", 3, "refresh interval in seconds for --watch")
 	return cmd
 }
 
 func newServiceDeployCmd() *cobra.Command {
 	var service, tag string
-	var yes bool
+	var yes, watch bool
+	var interval int
 	cmd := &cobra.Command{
 		Use:   "deploy",
 		Short: "Deploy a new image tag to a service (preview before applying)",
@@ -109,13 +134,14 @@ func newServiceDeployCmd() *cobra.Command {
 				return err
 			}
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Deploy preview (%s):\n  %s: %s -> %s\n",
-				app.EnvName, service, current, tag)
+			fmt.Fprintf(out, "%s (%s):\n  %s: %s %s %s\n",
+				render.Bold("Deploy preview"), app.EnvName,
+				render.Bold(service), render.Dim(current), render.Dim("->"), render.Accent(tag))
 
 			if !yes {
 				fmt.Fprint(out, "Apply? [y/N]: ")
 				if !confirm(cmd.InOrStdin()) {
-					fmt.Fprintln(out, "aborted")
+					fmt.Fprintln(out, render.Dim("aborted"))
 					return nil
 				}
 			}
@@ -123,15 +149,59 @@ func newServiceDeployCmd() *cobra.Command {
 			if err := dep.Deploy(cmd.Context(), cluster, realName, tag); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "deployed %s -> %s\nrollback with: steer -e %s service rollback -s %s\n",
-				service, tag, app.EnvName, service)
+			fmt.Fprintf(out, "%s %s %s %s\n%s\n",
+				render.Success("✓ deployed"), render.Bold(service), render.Dim("->"), render.Accent(tag),
+				render.Dim(fmt.Sprintf("rollback with: steer -e %s service rollback -s %s", app.EnvName, service)))
+
+			if watch {
+				return watchRollout(cmd.Context(), out, dep, cluster, realName, interval)
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVarP(&service, "service", "s", "", "service short name")
 	cmd.Flags().StringVarP(&tag, "tag", "t", "", "image tag to deploy")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip confirmation")
+	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "follow the rollout until it completes")
+	cmd.Flags().IntVar(&interval, "interval", 3, "poll interval in seconds for --watch")
 	return cmd
+}
+
+// watchRollout sigue el rollout de un servicio hasta COMPLETED o FAILED,
+// actualizando una sola línea en el sitio (no la reimprime).
+func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster, service string, interval int) error {
+	fmt.Fprintln(out, render.Dim("monitoring rollout (Ctrl+C to stop)..."))
+	for {
+		d, err := dep.DeploymentStatus(ctx, cluster, service)
+		if err != nil {
+			fmt.Fprintln(out)
+			return err
+		}
+		// \r vuelve al inicio, \033[K limpia hasta fin de línea → reescribe en el sitio.
+		fmt.Fprintf(out, "\r\033[KRollout: %s | Running: %d | Pending: %d | Desired: %d",
+			rolloutColor(d.Rollout), d.Running, d.Pending, d.Desired)
+		switch d.Rollout {
+		case "COMPLETED":
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, render.Success("✓ rollout completed"))
+			return nil
+		case "FAILED":
+			fmt.Fprintln(out)
+			return fmt.Errorf("rollout failed for %q", service)
+		}
+		time.Sleep(time.Duration(interval) * time.Second)
+	}
+}
+
+func rolloutColor(state string) string {
+	switch state {
+	case "COMPLETED":
+		return render.Success(state)
+	case "FAILED":
+		return render.Danger(state)
+	default:
+		return render.Accent(state)
+	}
 }
 
 func newServiceScaleCmd() *cobra.Command {
@@ -166,7 +236,7 @@ func newServiceScaleCmd() *cobra.Command {
 			if err := dep.Scale(cmd.Context(), cluster, realName, count); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "scaled %s to %d\n", service, count)
+			fmt.Fprintf(out, "%s %s %s\n", render.Success("✓ scaled"), render.Bold(service), render.Dim(fmt.Sprintf("to %d", count)))
 			return nil
 		},
 	}
@@ -207,7 +277,7 @@ func newServiceRollbackCmd() *cobra.Command {
 			if err := dep.Rollback(cmd.Context(), cluster, realName); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "rolled back %s\n", service)
+			fmt.Fprintf(out, "%s %s\n", render.Success("✓ rolled back"), render.Bold(service))
 			return nil
 		},
 	}

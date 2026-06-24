@@ -209,6 +209,27 @@ func TestListServicesPaginates(t *testing.T) {
 	require.Equal(t, 2, f.listIdx)         // consumió ambas páginas
 }
 
+func TestDeploymentStatusReadsPrimary(t *testing.T) {
+	f := &fakeECS{
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			RunningCount: 1,
+			DesiredCount: 1,
+			Deployments: []ecstypes.Deployment{
+				{Status: awssdk.String("ACTIVE"), RolloutState: ecstypes.DeploymentRolloutStateCompleted, RunningCount: 1},
+				{Status: awssdk.String("PRIMARY"), RolloutState: ecstypes.DeploymentRolloutStateInProgress, RunningCount: 0, PendingCount: 1, DesiredCount: 1},
+			},
+		}}},
+	}
+	d := newDeployer(f)
+
+	dep, err := d.DeploymentStatus(context.Background(), "stg-cluster", "catalog")
+	require.NoError(t, err)
+	require.Equal(t, "IN_PROGRESS", dep.Rollout)
+	require.Equal(t, 0, dep.Running)
+	require.Equal(t, 1, dep.Pending)
+	require.Equal(t, 1, dep.Desired)
+}
+
 func TestListServicesEnrichesPendingStatusTag(t *testing.T) {
 	f := &fakeECS{
 		listPages: []*ecs.ListServicesOutput{{ServiceArns: []string{"arn:svc/catalog"}}},

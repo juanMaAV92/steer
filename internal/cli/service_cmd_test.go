@@ -52,6 +52,20 @@ func TestDeployRequiresServiceAndTag(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestDeployWatchFollowsRollout(t *testing.T) {
+	fake := &coretest.FakeDeployer{
+		CurrentTagValue: "v1",
+		DeploymentValue: core.Deployment{Rollout: "COMPLETED", Running: 1, Desired: 1},
+	}
+	withFakeDeployer(t, fake)
+
+	out, err := runRoot(t, "service", "deploy", "-s", "catalog", "-t", "v2", "-y", "-w")
+	require.NoError(t, err)
+	require.Equal(t, []string{"stg-cluster/catalog/v2"}, fake.DeployCalls)
+	require.Contains(t, out, "Rollout")
+	require.Contains(t, out, "completed")
+}
+
 func TestScaleCommand(t *testing.T) {
 	fake := &coretest.FakeDeployer{}
 	withFakeDeployer(t, fake)
