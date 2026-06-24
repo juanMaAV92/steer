@@ -41,12 +41,20 @@ func serviceStatusTable(services []core.ServiceStatus) string {
 	headers := []string{"", "SERVICE", "DESIRED", "RUNNING", "PENDING", "STATUS", "TAG"}
 	rows := make([][]string, 0, len(services))
 	for _, s := range services {
+		running := strconv.Itoa(s.Running)
+		if s.Running != s.Desired { // no alcanza el deseado → rojo
+			running = render.Danger(running)
+		}
+		pending := strconv.Itoa(s.Pending)
+		if s.Pending > 0 { // hay instancias arrancando → amarillo
+			pending = render.Warn(pending)
+		}
 		rows = append(rows, []string{
 			render.Symbol(render.StatusLevel(s.Running, s.Desired)),
 			s.Name,
 			strconv.Itoa(s.Desired),
-			strconv.Itoa(s.Running),
-			strconv.Itoa(s.Pending),
+			running,
+			pending,
 			s.Status,
 			render.Accent(s.Tag),
 		})
@@ -192,9 +200,15 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster
 		lastID = evs[0].ID
 	}
 
-	lastStatus := ""
+	// La línea de status se mantiene SIEMPRE como última línea: se borra, se
+	// imprimen los eventos nuevos encima (se acumulan) y se reescribe abajo.
+	statusShown := false
 	for {
-		// Eventos nuevos (ECS los entrega más recientes primero).
+		if statusShown {
+			fmt.Fprint(out, "\r\033[K") // borra la línea de status actual
+		}
+
+		// Eventos nuevos (ECS los entrega más recientes primero) → se acumulan.
 		if evs, err := dep.ServiceEvents(ctx, cluster, service); err == nil {
 			var fresh []core.ServiceEvent
 			for _, e := range evs {
@@ -213,20 +227,21 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster
 
 		d, err := dep.DeploymentStatus(ctx, cluster, service)
 		if err != nil {
+			fmt.Fprintln(out)
 			return err
 		}
-		status := fmt.Sprintf("Rollout: %s | Running: %d | Pending: %d | Desired: %d",
+		// status sin salto de línea: queda como última línea, lista para reescribir.
+		fmt.Fprintf(out, "Rollout: %s | Running: %d | Pending: %d | Desired: %d",
 			rolloutColor(d.Rollout), d.Running, d.Pending, d.Desired)
-		if status != lastStatus {
-			fmt.Fprintln(out, status)
-			lastStatus = status
-		}
+		statusShown = true
 
 		if d.Rollout == "COMPLETED" && d.Running >= d.Desired {
+			fmt.Fprintln(out)
 			fmt.Fprintln(out, render.Success("✓ deployment completed"))
 			return nil
 		}
 		if d.Rollout == "FAILED" {
+			fmt.Fprintln(out)
 			return fmt.Errorf("deployment failed for %q", service)
 		}
 		time.Sleep(time.Duration(interval) * time.Second)

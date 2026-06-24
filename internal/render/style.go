@@ -17,3 +17,8 @@ func Success(s string) string {
 func Danger(s string) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(s)
 }
+
+// Warn colorea texto en amarillo (atención, en progreso).
+func Warn(s string) string {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render(s)
+}
