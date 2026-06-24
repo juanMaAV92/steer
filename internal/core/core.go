@@ -2,7 +2,17 @@
 // los providers (AWS hoy; Azure/GCP en el futuro) y consumen CLI y TUI.
 package core
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// ServiceEvent es un evento del servicio (mensajes de despliegue de ECS).
+type ServiceEvent struct {
+	ID      string
+	At      time.Time
+	Message string
+}
 
 // ServiceStatus es el estado de un servicio/contenedor.
 type ServiceStatus struct {
@@ -14,11 +24,25 @@ type ServiceStatus struct {
 	Tag     string // tag de imagen en uso (vacío si no se pudo resolver)
 }
 
+// Deployment es el estado del despliegue activo (rollout) de un servicio.
+type Deployment struct {
+	Rollout string // p.ej. IN_PROGRESS, COMPLETED, FAILED
+	Running int
+	Pending int
+	Desired int
+}
+
+// StepLogger recibe mensajes de progreso de una operación (puede ser nil).
+type StepLogger func(step string)
+
 // Deployer despliega y consulta servicios de cómputo (ECS / Container Apps / Cloud Run).
 type Deployer interface {
 	ListServices(ctx context.Context, cluster string) ([]ServiceStatus, error)
 	CurrentTag(ctx context.Context, cluster, service string) (string, error)
-	Deploy(ctx context.Context, cluster, service, tag string) error
+	Deploy(ctx context.Context, cluster, service, tag string, log StepLogger) error
 	Scale(ctx context.Context, cluster, service string, count int) error
 	Rollback(ctx context.Context, cluster, service string) error
+	DeploymentStatus(ctx context.Context, cluster, service string) (Deployment, error)
+	// ServiceEvents devuelve los eventos del servicio, más recientes primero.
+	ServiceEvents(ctx context.Context, cluster, service string) ([]ServiceEvent, error)
 }

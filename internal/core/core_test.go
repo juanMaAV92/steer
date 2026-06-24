@@ -24,7 +24,7 @@ func TestFakeDeployerImplementsInterface(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "v1.0.0", tag)
 
-	require.NoError(t, d.Deploy(ctx, "stg-cluster", "catalog", "v2"))
+	require.NoError(t, d.Deploy(ctx, "stg-cluster", "catalog", "v2", nil))
 	require.NoError(t, d.Scale(ctx, "stg-cluster", "catalog", 3))
 	require.NoError(t, d.Rollback(ctx, "stg-cluster", "catalog"))
 

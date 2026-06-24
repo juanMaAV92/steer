@@ -115,7 +115,7 @@ func TestDeployRegistersAndUpdates(t *testing.T) {
 	}
 	d := newDeployer(f)
 
-	err := d.Deploy(context.Background(), "stg-cluster", "catalog", "v2")
+	err := d.Deploy(context.Background(), "stg-cluster", "catalog", "v2", nil)
 	require.NoError(t, err)
 
 	require.NotNil(t, f.registerIn)
@@ -187,7 +187,7 @@ func TestDeployPreservesRuntimePlatform(t *testing.T) {
 		}},
 	}
 	d := newDeployer(f)
-	require.NoError(t, d.Deploy(context.Background(), "stg-cluster", "catalog", "v2"))
+	require.NoError(t, d.Deploy(context.Background(), "stg-cluster", "catalog", "v2", nil))
 	require.NotNil(t, f.registerIn.RuntimePlatform)
 	require.Equal(t, ecstypes.CPUArchitectureArm64, f.registerIn.RuntimePlatform.CpuArchitecture)
 }
@@ -207,6 +207,45 @@ func TestListServicesPaginates(t *testing.T) {
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(got), 1) // recorrió 2 páginas sin colgarse
 	require.Equal(t, 2, f.listIdx)         // consumió ambas páginas
+}
+
+func TestServiceEventsNewestFirst(t *testing.T) {
+	f := &fakeECS{
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			Events: []ecstypes.ServiceEvent{
+				{Id: awssdk.String("e2"), Message: awssdk.String("reached a steady state")},
+				{Id: awssdk.String("e1"), Message: awssdk.String("started 1 tasks")},
+			},
+		}}},
+	}
+	d := newDeployer(f)
+
+	evs, err := d.ServiceEvents(context.Background(), "stg-cluster", "catalog")
+	require.NoError(t, err)
+	require.Len(t, evs, 2)
+	require.Equal(t, "e2", evs[0].ID)
+	require.Equal(t, "reached a steady state", evs[0].Message)
+}
+
+func TestDeploymentStatusReadsPrimary(t *testing.T) {
+	f := &fakeECS{
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			RunningCount: 1,
+			DesiredCount: 1,
+			Deployments: []ecstypes.Deployment{
+				{Status: awssdk.String("ACTIVE"), RolloutState: ecstypes.DeploymentRolloutStateCompleted, RunningCount: 1},
+				{Status: awssdk.String("PRIMARY"), RolloutState: ecstypes.DeploymentRolloutStateInProgress, RunningCount: 0, PendingCount: 1, DesiredCount: 1},
+			},
+		}}},
+	}
+	d := newDeployer(f)
+
+	dep, err := d.DeploymentStatus(context.Background(), "stg-cluster", "catalog")
+	require.NoError(t, err)
+	require.Equal(t, "IN_PROGRESS", dep.Rollout)
+	require.Equal(t, 0, dep.Running)
+	require.Equal(t, 1, dep.Pending)
+	require.Equal(t, 1, dep.Desired)
 }
 
 func TestListServicesEnrichesPendingStatusTag(t *testing.T) {

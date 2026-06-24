@@ -78,6 +78,60 @@ func (d *ECSDeployer) ListServices(ctx context.Context, cluster string) ([]core.
 	return out, nil
 }
 
+// DeploymentStatus devuelve el estado del rollout activo (PRIMARY) de un servicio.
+func (d *ECSDeployer) DeploymentStatus(ctx context.Context, cluster, service string) (core.Deployment, error) {
+	desc, err := d.api.DescribeServices(ctx, &ecs.DescribeServicesInput{
+		Cluster:  awssdk.String(cluster),
+		Services: []string{service},
+	})
+	if err != nil {
+		return core.Deployment{}, err
+	}
+	if len(desc.Services) == 0 {
+		return core.Deployment{}, fmt.Errorf("service %q not found in cluster %q", service, cluster)
+	}
+	s := desc.Services[0]
+	for _, dep := range s.Deployments {
+		if awssdk.ToString(dep.Status) == "PRIMARY" {
+			return core.Deployment{
+				Rollout: string(dep.RolloutState),
+				Running: int(dep.RunningCount),
+				Pending: int(dep.PendingCount),
+				Desired: int(s.DesiredCount), // desired autoritativo del servicio
+			}, nil
+		}
+	}
+	// Sin deployment PRIMARY: reporta los contadores del servicio.
+	return core.Deployment{
+		Running: int(s.RunningCount),
+		Pending: int(s.PendingCount),
+		Desired: int(s.DesiredCount),
+	}, nil
+}
+
+// ServiceEvents devuelve los eventos del servicio (ECS los entrega más recientes primero).
+func (d *ECSDeployer) ServiceEvents(ctx context.Context, cluster, service string) ([]core.ServiceEvent, error) {
+	desc, err := d.api.DescribeServices(ctx, &ecs.DescribeServicesInput{
+		Cluster:  awssdk.String(cluster),
+		Services: []string{service},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(desc.Services) == 0 {
+		return nil, fmt.Errorf("service %q not found in cluster %q", service, cluster)
+	}
+	var out []core.ServiceEvent
+	for _, e := range desc.Services[0].Events {
+		out = append(out, core.ServiceEvent{
+			ID:      awssdk.ToString(e.Id),
+			At:      awssdk.ToTime(e.CreatedAt),
+			Message: awssdk.ToString(e.Message),
+		})
+	}
+	return out, nil
+}
+
 // tagForTaskDef resuelve el tag de imagen de una task def; "" si no se puede.
 func (d *ECSDeployer) tagForTaskDef(ctx context.Context, tdArn string) string {
 	if tdArn == "" {
@@ -196,7 +250,14 @@ func (d *ECSDeployer) Rollback(ctx context.Context, cluster, service string) err
 }
 
 // Deploy registra una nueva task def con la imagen re-tageada y apunta el servicio a ella.
-func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string) error {
+func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string, log core.StepLogger) error {
+	step := func(msg string) {
+		if log != nil {
+			log(msg)
+		}
+	}
+
+	step("reading current task definition")
 	td, err := d.currentTaskDef(ctx, cluster, service)
 	if err != nil {
 		return err
@@ -208,6 +269,7 @@ func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string) 
 	copy(containers, td.ContainerDefinitions)
 	containers[0].Image = awssdk.String(replaceTag(awssdk.ToString(containers[0].Image), tag))
 
+	step("registering new task definition revision")
 	reg, err := d.api.RegisterTaskDefinition(ctx, &ecs.RegisterTaskDefinitionInput{
 		Family:                  td.Family,
 		ContainerDefinitions:    containers,
@@ -229,7 +291,9 @@ func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string) 
 	if err != nil {
 		return err
 	}
+	step(fmt.Sprintf("registered %s:%d", awssdk.ToString(reg.TaskDefinition.Family), reg.TaskDefinition.Revision))
 
+	step("updating service")
 	_, err = d.api.UpdateService(ctx, &ecs.UpdateServiceInput{
 		Cluster:        awssdk.String(cluster),
 		Service:        awssdk.String(service),
