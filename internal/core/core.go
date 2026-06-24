@@ -22,11 +22,14 @@ type Deployment struct {
 	Desired int
 }
 
+// StepLogger recibe mensajes de progreso de una operación (puede ser nil).
+type StepLogger func(step string)
+
 // Deployer despliega y consulta servicios de cómputo (ECS / Container Apps / Cloud Run).
 type Deployer interface {
 	ListServices(ctx context.Context, cluster string) ([]ServiceStatus, error)
 	CurrentTag(ctx context.Context, cluster, service string) (string, error)
-	Deploy(ctx context.Context, cluster, service, tag string) error
+	Deploy(ctx context.Context, cluster, service, tag string, log StepLogger) error
 	Scale(ctx context.Context, cluster, service string, count int) error
 	Rollback(ctx context.Context, cluster, service string) error
 	DeploymentStatus(ctx context.Context, cluster, service string) (Deployment, error)

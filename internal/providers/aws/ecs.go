@@ -227,7 +227,14 @@ func (d *ECSDeployer) Rollback(ctx context.Context, cluster, service string) err
 }
 
 // Deploy registra una nueva task def con la imagen re-tageada y apunta el servicio a ella.
-func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string) error {
+func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string, log core.StepLogger) error {
+	step := func(msg string) {
+		if log != nil {
+			log(msg)
+		}
+	}
+
+	step("reading current task definition")
 	td, err := d.currentTaskDef(ctx, cluster, service)
 	if err != nil {
 		return err
@@ -239,6 +246,7 @@ func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string) 
 	copy(containers, td.ContainerDefinitions)
 	containers[0].Image = awssdk.String(replaceTag(awssdk.ToString(containers[0].Image), tag))
 
+	step("registering new task definition revision")
 	reg, err := d.api.RegisterTaskDefinition(ctx, &ecs.RegisterTaskDefinitionInput{
 		Family:                  td.Family,
 		ContainerDefinitions:    containers,
@@ -260,7 +268,9 @@ func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string) 
 	if err != nil {
 		return err
 	}
+	step(fmt.Sprintf("registered %s:%d", awssdk.ToString(reg.TaskDefinition.Family), reg.TaskDefinition.Revision))
 
+	step("updating service")
 	_, err = d.api.UpdateService(ctx, &ecs.UpdateServiceInput{
 		Cluster:        awssdk.String(cluster),
 		Service:        awssdk.String(service),

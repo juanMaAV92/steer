@@ -28,7 +28,10 @@ func (f *FakeDeployer) CurrentTag(_ context.Context, _, _ string) (string, error
 	return f.CurrentTagValue, nil
 }
 
-func (f *FakeDeployer) Deploy(_ context.Context, cluster, service, tag string) error {
+func (f *FakeDeployer) Deploy(_ context.Context, cluster, service, tag string, log core.StepLogger) error {
+	if log != nil {
+		log("deploying")
+	}
 	f.DeployCalls = append(f.DeployCalls, cluster+"/"+service+"/"+tag)
 	return f.DeployErr
 }

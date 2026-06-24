@@ -146,7 +146,9 @@ func newServiceDeployCmd() *cobra.Command {
 				}
 			}
 
-			if err := dep.Deploy(cmd.Context(), cluster, realName, tag); err != nil {
+			if err := dep.Deploy(cmd.Context(), cluster, realName, tag, func(s string) {
+				fmt.Fprintln(out, render.Dim("[*] "+s))
+			}); err != nil {
 				return err
 			}
 			fmt.Fprintf(out, "%s %s %s %s\n%s\n",

@@ -115,7 +115,7 @@ func TestDeployRegistersAndUpdates(t *testing.T) {
 	}
 	d := newDeployer(f)
 
-	err := d.Deploy(context.Background(), "stg-cluster", "catalog", "v2")
+	err := d.Deploy(context.Background(), "stg-cluster", "catalog", "v2", nil)
 	require.NoError(t, err)
 
 	require.NotNil(t, f.registerIn)
@@ -187,7 +187,7 @@ func TestDeployPreservesRuntimePlatform(t *testing.T) {
 		}},
 	}
 	d := newDeployer(f)
-	require.NoError(t, d.Deploy(context.Background(), "stg-cluster", "catalog", "v2"))
+	require.NoError(t, d.Deploy(context.Background(), "stg-cluster", "catalog", "v2", nil))
 	require.NotNil(t, f.registerIn.RuntimePlatform)
 	require.Equal(t, ecstypes.CPUArchitectureArm64, f.registerIn.RuntimePlatform.CpuArchitecture)
 }
