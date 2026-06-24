@@ -14,7 +14,28 @@ type viewState int
 const (
 	viewList viewState = iota
 	viewDetail
+	viewConfirm
 )
+
+type actionKind int
+
+const (
+	actionRollback actionKind = iota
+	actionDeploy
+	actionScale
+)
+
+type pendingAction struct {
+	kind    actionKind
+	service string
+	input   string // tag (deploy) o count (scale)
+}
+
+// actionDoneMsg es el resultado de ejecutar una acción.
+type actionDoneMsg struct {
+	msg string
+	err error
+}
 
 // Model es el estado de la TUI (patrón Elm de Bubble Tea).
 type Model struct {
@@ -24,6 +45,7 @@ type Model struct {
 	services []core.ServiceStatus
 	cursor   int
 	view     viewState
+	action   pendingAction
 	loading  bool
 	status   string
 	err      error
@@ -78,6 +100,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		return m, tea.Batch(m.loadServicesCmd(), tickCmd())
 
+	case actionDoneMsg:
+		m.view = viewList
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.status = msg.msg
+		}
+		return m, m.loadServicesCmd()
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -97,11 +128,26 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.view == viewConfirm {
+		switch msg.String() {
+		case "esc":
+			m.view = viewList
+		case "enter":
+			return m, m.runActionCmd()
+		}
+		return m, nil
+	}
+
 	// viewList
 	switch msg.String() {
 	case "r":
 		m.loading = true
 		return m, m.loadServicesCmd()
+	case "R":
+		if s, ok := m.selected(); ok {
+			m.action = pendingAction{kind: actionRollback, service: s.Name}
+			m.view = viewConfirm
+		}
 	case "j", "down":
 		if m.cursor < len(m.services)-1 {
 			m.cursor++
@@ -116,6 +162,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m Model) runActionCmd() tea.Cmd {
+	a := m.action
+	dep := m.dep
+	cluster := m.cluster
+	return func() tea.Msg {
+		ctx := context.Background()
+		switch a.kind {
+		case actionRollback:
+			err := dep.Rollback(ctx, cluster, a.service)
+			return actionDoneMsg{msg: "rolled back " + a.service, err: err}
+		}
+		return actionDoneMsg{err: nil}
+	}
 }
 
 // selected devuelve el servicio bajo el cursor (ok=false si la lista está vacía).

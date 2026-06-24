@@ -95,3 +95,31 @@ func TestEnterOnEmptyListDoesNothing(t *testing.T) {
 	m = mustUpdate(t, m, keyMsg("enter"))
 	require.Equal(t, viewList, m.view)
 }
+
+func TestRollbackConfirmAndExecute(t *testing.T) {
+	fake := &coretest.FakeDeployer{Services: []core.ServiceStatus{{Name: "catalog"}}}
+	m := New(fake, "stg-cluster", "stg")
+	m.services = fake.Services
+
+	// 'R' abre confirmación de rollback
+	m = mustUpdate(t, m, keyMsg("R"))
+	require.Equal(t, viewConfirm, m.view)
+	require.Equal(t, actionRollback, m.action.kind)
+
+	// enter ejecuta → devuelve un cmd que llama al deployer
+	_, cmd := m.Update(keyMsg("enter"))
+	require.NotNil(t, cmd)
+	msg := cmd()
+	done, ok := msg.(actionDoneMsg)
+	require.True(t, ok)
+	require.NoError(t, done.err)
+	require.Equal(t, []string{"stg-cluster/catalog"}, fake.RollbackCalls)
+}
+
+func TestConfirmEscCancels(t *testing.T) {
+	m := newTestModel([]core.ServiceStatus{{Name: "catalog"}})
+	m.services = []core.ServiceStatus{{Name: "catalog"}}
+	m = mustUpdate(t, m, keyMsg("R"))
+	m = mustUpdate(t, m, keyMsg("esc"))
+	require.Equal(t, viewList, m.view)
+}
