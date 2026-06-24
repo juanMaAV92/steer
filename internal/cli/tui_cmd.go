@@ -16,7 +16,7 @@ func NewTuiCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return tui.Run(dep, cluster, app.EnvName)
+			return tui.Run(dep, cluster, app.EnvName, app.Env.Writable)
 		},
 	}
 }

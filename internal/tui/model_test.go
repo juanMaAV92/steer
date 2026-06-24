@@ -10,7 +10,7 @@ import (
 )
 
 func newTestModel(services []core.ServiceStatus) Model {
-	return New(&coretest.FakeDeployer{Services: services}, "stg-cluster", "stg")
+	return New(&coretest.FakeDeployer{Services: services}, "stg-cluster", "stg", true)
 }
 
 func TestServicesMsgPopulates(t *testing.T) {
@@ -98,7 +98,7 @@ func TestEnterOnEmptyListDoesNothing(t *testing.T) {
 
 func TestRollbackConfirmAndExecute(t *testing.T) {
 	fake := &coretest.FakeDeployer{Services: []core.ServiceStatus{{Name: "catalog"}}}
-	m := New(fake, "stg-cluster", "stg")
+	m := New(fake, "stg-cluster", "stg", true)
 	m.services = fake.Services
 
 	// 'R' abre confirmación de rollback
@@ -126,7 +126,7 @@ func TestConfirmEscCancels(t *testing.T) {
 
 func TestDeployInputAndExecute(t *testing.T) {
 	fake := &coretest.FakeDeployer{Services: []core.ServiceStatus{{Name: "catalog"}}}
-	m := New(fake, "stg-cluster", "stg")
+	m := New(fake, "stg-cluster", "stg", true)
 	m.services = fake.Services
 
 	m = mustUpdate(t, m, keyMsg("d")) // abre input de deploy
@@ -147,7 +147,7 @@ func TestDeployInputAndExecute(t *testing.T) {
 
 func TestScaleInputAndExecute(t *testing.T) {
 	fake := &coretest.FakeDeployer{Services: []core.ServiceStatus{{Name: "catalog"}}}
-	m := New(fake, "stg-cluster", "stg")
+	m := New(fake, "stg-cluster", "stg", true)
 	m.services = fake.Services
 
 	m = mustUpdate(t, m, keyMsg("s"))
@@ -169,4 +169,15 @@ func TestInputBackspace(t *testing.T) {
 	}
 	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
 	require.Equal(t, "v2", m.action.input)
+}
+
+func TestReadOnlyBlocksActions(t *testing.T) {
+	ro := New(&coretest.FakeDeployer{Services: []core.ServiceStatus{{Name: "catalog"}}}, "prod-cluster", "production", false)
+	ro.services = []core.ServiceStatus{{Name: "catalog"}}
+
+	for _, key := range []string{"d", "s", "R"} {
+		m := mustUpdate(t, ro, keyMsg(key))
+		require.Equal(t, viewList, m.view, "key %q must not open confirm in read-only env", key)
+		require.NotEmpty(t, m.notice)
+	}
 }

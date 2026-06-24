@@ -46,12 +46,14 @@ type Model struct {
 	dep      core.Deployer
 	cluster  string
 	env      string
+	writable bool
 	services []core.ServiceStatus
 	cursor   int
 	view     viewState
 	action   pendingAction
 	loading  bool
 	status   string
+	notice   string
 	err      error
 }
 
@@ -71,8 +73,8 @@ func tickCmd() tea.Cmd {
 }
 
 // New crea el modelo inicial.
-func New(dep core.Deployer, cluster, env string) Model {
-	return Model{dep: dep, cluster: cluster, env: env, loading: true}
+func New(dep core.Deployer, cluster, env string, writable bool) Model {
+	return Model{dep: dep, cluster: cluster, env: env, writable: writable, loading: true}
 }
 
 // loadServicesCmd lista los servicios en segundo plano.
@@ -164,21 +166,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.loading = true
 		return m, m.loadServicesCmd()
-	case "R":
-		if s, ok := m.selected(); ok {
-			m.action = pendingAction{kind: actionRollback, service: s.Name}
-			m.view = viewConfirm
+	case "d", "s", "R":
+		if !m.writable {
+			m.notice = "read-only environment (writable=false) — action blocked"
+			return m, nil
 		}
-	case "d":
-		if s, ok := m.selected(); ok {
+		s, ok := m.selected()
+		if !ok {
+			return m, nil
+		}
+		switch msg.String() {
+		case "d":
 			m.action = pendingAction{kind: actionDeploy, service: s.Name}
-			m.view = viewConfirm
-		}
-	case "s":
-		if s, ok := m.selected(); ok {
+		case "s":
 			m.action = pendingAction{kind: actionScale, service: s.Name}
-			m.view = viewConfirm
+		case "R":
+			m.action = pendingAction{kind: actionRollback, service: s.Name}
 		}
+		m.notice = ""
+		m.view = viewConfirm
 	case "j", "down":
 		if m.cursor < len(m.services)-1 {
 			m.cursor++
@@ -256,6 +262,9 @@ func (m Model) listView() string {
 	}
 	if m.status != "" {
 		b.WriteString("\n" + render.Success(m.status) + "\n")
+	}
+	if m.notice != "" {
+		b.WriteString("\n" + render.Warn(m.notice) + "\n")
 	}
 	b.WriteString(render.Dim("\n↑/↓ move · enter detail · d deploy · s scale · R rollback · r refresh · q quit"))
 	return b.String()
