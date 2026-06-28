@@ -147,7 +147,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.events.AppendLine(render.Danger("error: " + msg.err.Error()))
 			m.deployDone = true
-			return m, nil
+			return m, m.loadServicesCmd()
 		}
 		m.deployLastID = msg.lastID
 		return m, deployPollCmd(m.dep, m.cluster, m.deployService, m.deployLastID)
@@ -340,6 +340,7 @@ func (m *Model) runActionCmd() tea.Cmd {
 		case actionRollback:
 			return actionDoneMsg{msg: "rolled back " + a.service, err: dep.Rollback(ctx, cluster, a.service)}
 		case actionDeploy:
+			// inalcanzable: el deploy se inicia desde el handler de Enter (startDeployCmd), no aquí
 			return actionDoneMsg{msg: "deployed " + a.service + " -> " + a.input,
 				err: dep.Deploy(ctx, cluster, a.service, a.input, nil)}
 		case actionScale:
