@@ -84,3 +84,35 @@ func TestTickReloadsAndReschedules(t *testing.T) {
 	_, cmd := m.Update(tickMsg{})
 	require.NotNil(t, cmd)
 }
+
+// sidebarServiceRowY calcula la coordenada Y del i-ésimo servicio en el sidebar.
+// Usa las mismas constantes que handleMouse para que test e implementación estén sincronizados.
+func sidebarServiceRowY(i int) int {
+	return topBarHeight + borderTop + sidebarHeader + i
+}
+
+func TestMouseClickSelectsSidebarService(t *testing.T) {
+	m := newTestModel(sampleServices())
+	// click en el 2do servicio (índice 1) dentro del sidebar
+	click := tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+		X:      3,
+		Y:      sidebarServiceRowY(1),
+	}
+	m = mustUpdate(t, m, click)
+	require.Equal(t, 1, m.sidebar.cursor)
+	require.Equal(t, focusSidebar, m.focus)
+}
+
+func TestMouseWheelScrollsPanelWhenFocused(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m.focus = focusPanel
+	wheel := tea.MouseMsg{
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonWheelDown,
+	}
+	// no debe panic ni cambiar de servicio
+	m = mustUpdate(t, m, wheel)
+	require.Equal(t, focusPanel, m.focus)
+}

@@ -21,6 +21,16 @@ const (
 	focusAction
 )
 
+// Constantes de geometría para el routing de mouse.
+// topBarHeight: filas que ocupa la barra superior (incluyendo "\n" de separación).
+// borderTop: fila del borde superior del sidebar/panel.
+// sidebarHeader: fila del encabezado "SERVICES (n)" dentro del sidebar.
+const (
+	topBarHeight  = 4 // top bar (3 líneas) + separador "\n"
+	borderTop     = 0 // el borde está incluido en topBarHeight al usar lipgloss
+	sidebarHeader = 1 // línea "SERVICES (n)" dentro del borde
+)
+
 type actionKind int
 
 const (
@@ -132,8 +142,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+
+	case tea.MouseMsg:
+		return m, m.handleMouse(msg)
 	}
 	return m, nil
+}
+
+// handleMouse enruta los eventos de mouse a la zona correcta:
+// rueda → scroll del panel de eventos, click izquierdo → selección en sidebar o pestaña en panel.
+func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
+	// rueda: scroll en el panel de eventos si el cursor está sobre el panel
+	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
+		if msg.X > m.sidebarW {
+			return m.events.Update(msg)
+		}
+		return nil
+	}
+	// solo procesar clicks izquierdos
+	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
+		return nil
+	}
+	// click en la zona del sidebar
+	if msg.X <= m.sidebarW {
+		row := msg.Y - (topBarHeight + borderTop + sidebarHeader)
+		if row >= 0 && row < m.sidebar.serviceRowCount() {
+			m.sidebar.selectIndex(row)
+			m.focus = focusSidebar
+		}
+		return nil
+	}
+	// click en la zona del panel: primera fila útil = pestañas
+	panelRow := msg.Y - (topBarHeight + borderTop)
+	if panelRow == 0 {
+		seg := m.panelW / m.tabs.Count()
+		if seg < 1 {
+			seg = 1
+		}
+		idx := (msg.X - m.sidebarW) / seg
+		if idx >= 0 && idx < m.tabs.Count() {
+			m.tabs.Set(panel.Tab(idx))
+		}
+	}
+	m.focus = focusPanel
+	return nil
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
