@@ -9,9 +9,10 @@ import (
 )
 
 // DetailsView renderiza la pestaña Details con stats y la fila de acciones.
-func DetailsView(s core.ServiceStatus, writable bool) string {
+// displayName es el nombre de visualización (sin prefijo de entorno).
+func DetailsView(s core.ServiceStatus, writable bool, displayName string) string {
 	var b strings.Builder
-	b.WriteString(render.Bold(s.Name) + "\n\n")
+	b.WriteString(render.Bold(displayName) + "\n\n")
 	b.WriteString("running   " + strconv.Itoa(s.Running) + "/" + strconv.Itoa(s.Desired) + "\n")
 	b.WriteString("pending   " + strconv.Itoa(s.Pending) + "\n")
 	b.WriteString("status    " + s.Status + "\n")

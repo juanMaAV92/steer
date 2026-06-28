@@ -4,6 +4,7 @@ package tui
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -45,6 +46,7 @@ type Model struct {
 	cluster  string
 	env      string
 	writable bool
+	prefix   string // prefijo de entorno a ocultar en la visualización
 	keys     keyMap
 
 	sidebar sidebar
@@ -66,10 +68,12 @@ type Model struct {
 	deployService            string
 }
 
-func New(dep core.Deployer, cluster, env string, writable bool) Model {
+func New(dep core.Deployer, cluster, env string, writable bool, prefix string) Model {
+	sb := newSidebar()
+	sb.prefix = prefix
 	return Model{
-		dep: dep, cluster: cluster, env: env, writable: writable,
-		keys: defaultKeys(), sidebar: newSidebar(), events: panel.NewEvents(),
+		dep: dep, cluster: cluster, env: env, writable: writable, prefix: prefix,
+		keys: defaultKeys(), sidebar: sb, events: panel.NewEvents(),
 		loading: true,
 	}
 }
@@ -403,7 +407,8 @@ func (m Model) panelBody() string {
 	case panel.TabLogs:
 		return panel.LogsView()
 	default:
-		return panel.DetailsView(s, m.writable)
+		displayName := strings.TrimPrefix(s.Name, m.prefix)
+		return panel.DetailsView(s, m.writable, displayName)
 	}
 }
 

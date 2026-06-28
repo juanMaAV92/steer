@@ -1,0 +1,35 @@
+// Command steerdemo abre la TUI con datos en memoria (sin AWS) para probar la
+// interfaz localmente. Es una utilidad local; no forma parte del binario steer.
+package main
+
+import (
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/juanMaAV92/steer/internal/core"
+	"github.com/juanMaAV92/steer/internal/core/coretest"
+	"github.com/juanMaAV92/steer/internal/tui"
+)
+
+func main() {
+	now := time.Now()
+	fake := &coretest.FakeDeployer{
+		Services: []core.ServiceStatus{
+			{Name: "nao-v2-demo-api", Running: 2, Desired: 2, Pending: 0, Status: "ACTIVE", Tag: "v1.4"},
+			{Name: "nao-v2-demo-web", Running: 3, Desired: 3, Pending: 0, Status: "ACTIVE", Tag: "v2.0"},
+			{Name: "nao-v2-demo-worker", Running: 1, Desired: 2, Pending: 1, Status: "ACTIVE", Tag: "v1.1"},
+			{Name: "nao-v2-demo-cron", Running: 0, Desired: 1, Pending: 0, Status: "ACTIVE", Tag: ""},
+		},
+		DeploymentValue: core.Deployment{Rollout: "COMPLETED", Running: 2, Desired: 2},
+		Events: []core.ServiceEvent{
+			{ID: "3", At: now, Message: "(service nao-v2-demo-api) has reached a steady state."},
+			{ID: "2", At: now.Add(-30 * time.Second), Message: "(service nao-v2-demo-api) registered 2 targets."},
+			{ID: "1", At: now.Add(-60 * time.Second), Message: "(service nao-v2-demo-api) has started 2 tasks."},
+		},
+	}
+	if err := tui.Run(fake, "demo-cluster", "demo", true, "nao-v2-demo-"); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+}

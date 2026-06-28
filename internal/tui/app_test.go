@@ -12,7 +12,7 @@ import (
 )
 
 func newTestModel(services []core.ServiceStatus) Model {
-	m := New(&coretest.FakeDeployer{Services: services}, "stg-cluster", "stg", true)
+	m := New(&coretest.FakeDeployer{Services: services}, "stg-cluster", "stg", true, "")
 	m.sidebar.setServices(services)
 	m, _ = applySize(m, 120, 40)
 	return m
@@ -32,7 +32,7 @@ func mustUpdate(t *testing.T, m Model, msg tea.Msg) Model {
 func TestServicesMsgPopulatesSidebar(t *testing.T) {
 	m := newTestModel(nil)
 	m = mustUpdate(t, m, servicesMsg{services: sampleServices()})
-	require.Len(t, m.sidebar.services, 3)
+	require.Len(t, m.sidebar.services, 4)
 	require.False(t, m.loading)
 }
 
@@ -60,7 +60,7 @@ func TestQuitKeys(t *testing.T) {
 }
 
 func TestReadOnlyBlocksActions(t *testing.T) {
-	ro := New(&coretest.FakeDeployer{Services: sampleServices()}, "prod-cluster", "production", false)
+	ro := New(&coretest.FakeDeployer{Services: sampleServices()}, "prod-cluster", "production", false, "")
 	ro.sidebar.setServices(sampleServices())
 	ro, _ = applySize(ro, 120, 40)
 	for _, key := range []string{"d", "s", "R"} {
@@ -111,7 +111,7 @@ func TestMouseClickSelectsSidebarService(t *testing.T) {
 		Y:      targetY,
 	}
 	m = mustUpdate(t, m, click)
-	require.Equal(t, 1, m.sidebar.cursor)
+	require.Equal(t, 2, m.sidebar.cursor)
 	require.Equal(t, focusSidebar, m.focus)
 }
 
@@ -132,7 +132,7 @@ func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 		Services:        sampleServices(),
 		DeploymentValue: core.Deployment{Rollout: "COMPLETED", Running: 2, Desired: 2},
 	}
-	m := New(fake, "stg-cluster", "stg", true)
+	m := New(fake, "stg-cluster", "stg", true, "")
 	m.sidebar.setServices(fake.Services)
 	m, _ = applySize(m, 120, 40)
 

@@ -6,9 +6,9 @@ import (
 )
 
 // Run abre la TUI a pantalla completa con soporte de mouse hasta que el usuario sale.
-func Run(dep core.Deployer, cluster, env string, writable bool) error {
+func Run(dep core.Deployer, cluster, env string, writable bool, prefix string) error {
 	p := tea.NewProgram(
-		New(dep, cluster, env, writable),
+		New(dep, cluster, env, writable, prefix),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)

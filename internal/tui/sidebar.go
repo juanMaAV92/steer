@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 
@@ -14,12 +15,22 @@ type sidebar struct {
 	cursor        int
 	focused       bool
 	width, height int
+	prefix        string // prefijo a ocultar en la visualización (ej. "nao-v2-dev-")
 }
 
 func newSidebar() sidebar { return sidebar{} }
 
+// setServices guarda los servicios y los ordena alfabéticamente por nombre de visualización.
 func (s *sidebar) setServices(svc []core.ServiceStatus) {
-	s.services = svc
+	// copiar para no mutar el slice original
+	sorted := make([]core.ServiceStatus, len(svc))
+	copy(sorted, svc)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		di := strings.ToLower(strings.TrimPrefix(sorted[i].Name, s.prefix))
+		dj := strings.ToLower(strings.TrimPrefix(sorted[j].Name, s.prefix))
+		return di < dj
+	})
+	s.services = sorted
 	if s.cursor >= len(s.services) {
 		s.cursor = max(0, len(s.services)-1)
 	}
@@ -65,8 +76,9 @@ func (s sidebar) view() string {
 		if tag == "" {
 			tag = "—"
 		}
+		displayName := strings.TrimPrefix(svc.Name, s.prefix)
 		b.WriteString(cursor + render.Symbol(render.StatusLevel(svc.Running, svc.Desired)) + " " +
-			svc.Name + "  " + strconv.Itoa(svc.Running) + "/" + strconv.Itoa(svc.Desired) +
+			displayName + "  " + strconv.Itoa(svc.Running) + "/" + strconv.Itoa(svc.Desired) +
 			"  " + render.Dim(tag) + "\n")
 	}
 	b.WriteString("\n" + render.Dim("IMAGES (ECR)") + "\n" + render.Dim("  (próximamente)") + "\n")
