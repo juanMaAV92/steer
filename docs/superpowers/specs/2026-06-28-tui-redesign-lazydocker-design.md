@@ -131,9 +131,8 @@ sin viewport.
 
 - Anchos: sidebar ~30 % (con mínimo ~24 columnas), panel ~70 %.
 - Altos: top bar (3 líneas con borde), bottom bar (1 línea), resto al cuerpo.
-- Fallback: si el ancho total < umbral (~80 columnas), colapsa a una sola columna
-  (sidebar arriba, panel abajo) o esconde el panel hasta seleccionar — a decidir en el
-  plan; el comportamiento debe ser explícito, no un layout roto.
+- Fallback: si el ancho total < umbral (~80 columnas), **colapsa a una sola columna
+  apilada**: sidebar arriba, panel abajo. Comportamiento explícito, nunca un layout roto.
 
 ### Acciones y read-only
 
@@ -164,8 +163,14 @@ tests sin terminal real.
   ajustarse pero mantiene los mismos parámetros de contexto (dep, cluster, env, writable).
 - `internal/core` y `internal/providers` **no se tocan**.
 
-## Decisiones abiertas (a resolver en el plan)
+## Decisiones resueltas
 
-- Comportamiento exacto del fallback de una sola columna en terminales angostas.
-- Si la fila de acciones vive en Details (propuesto) o como bottom bar contextual.
-- Atajo y forma del selector de contexto futuro (solo se reserva el espacio en v1).
+- **Fallback angosto:** colapsar a una sola columna apilada (sidebar arriba, panel abajo).
+- **Fila de acciones:** vive dentro de la pestaña Details (`[d] deploy  [s] scale  [R] rollback`).
+- **Pestaña Logs:** visible en v1 como placeholder ("logs no disponibles todavía"),
+  lista para conectarse cuando el core exponga un `LogSource`.
+
+## Decisiones diferidas (futuro, no en este plan)
+
+- Atajo y forma del selector de contexto interactivo (multi-cluster/multi-cloud); en v1
+  solo se reserva el espacio en el top bar.
