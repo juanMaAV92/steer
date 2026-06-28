@@ -169,6 +169,14 @@ tests sin terminal real.
 - **Fila de acciones:** vive dentro de la pestaña Details (`[d] deploy  [s] scale  [R] rollback`).
 - **Pestaña Logs:** visible en v1 como placeholder ("logs no disponibles todavía"),
   lista para conectarse cuando el core exponga un `LogSource`.
+- **Identidad de color:** el acento de marca de steer es **cian de Go** (`#00ADD8`,
+  `render.BrandColor`), usado en wordmark, pestaña activa, tags, valores destacados,
+  teclas de acción `[d]/[s]/[R]`, cursor/selección y borde del panel con foco. El
+  **verde/amarillo/rojo se reservan exclusivamente para estado de salud** (puntos `●`,
+  `ACTIVE`, `writable ●`, éxito/fallo). La fila seleccionada del sidebar lleva una barra
+  de fondo cian oscuro conservando el color del punto de estado.
+- **Lista de servicios:** se oculta el prefijo de cluster/entorno (`nao-v2-{env}-`) en la
+  visualización (el nombre real se conserva para las acciones) y se ordena alfabéticamente.
 
 ## Decisiones diferidas (futuro, no en este plan)
 

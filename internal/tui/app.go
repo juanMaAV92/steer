@@ -101,6 +101,7 @@ func (m *Model) layout() {
 		if m.sidebarW < 10 {
 			m.sidebarW, m.panelW = 10, 10
 		}
+		m.sidebar.width = m.sidebarW
 		m.events.SetSize(m.panelW-2, m.bodyH/2-3)
 		return
 	}
@@ -112,6 +113,7 @@ func (m *Model) layout() {
 	if m.panelW < 10 {
 		m.panelW = 10
 	}
+	m.sidebar.width = m.sidebarW
 	m.events.SetSize(m.panelW-2, m.bodyH-3) // -tabs -bordes
 }
 

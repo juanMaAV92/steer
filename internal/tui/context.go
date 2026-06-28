@@ -8,8 +8,8 @@ func topBar(cloud, env, cluster string, writable bool) string {
 	if !writable {
 		state = render.Warn("read-only ○")
 	}
-	return render.Bold("steer") + render.Dim(" — "+cloud+" · "+env+
-		" (cluster: "+cluster+") — ") + state
+	return render.Brand("steer") + render.Dim(" — "+cloud+" · ") + render.Accent(env) +
+		render.Dim(" (cluster: "+cluster+") — ") + state
 }
 
 // bottomBar muestra ayuda y, si hay, un aviso o estado que tiene prioridad visual.
