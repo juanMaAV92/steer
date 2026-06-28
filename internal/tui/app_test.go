@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -86,20 +87,28 @@ func TestTickReloadsAndReschedules(t *testing.T) {
 	require.NotNil(t, cmd)
 }
 
-// sidebarServiceRowY calcula la coordenada Y del i-ésimo servicio en el sidebar.
-// Usa las mismas constantes que handleMouse para que test e implementación estén sincronizados.
-func sidebarServiceRowY(i int) int {
-	return topBarHeight + borderTop + sidebarHeader + i
-}
-
 func TestMouseClickSelectsSidebarService(t *testing.T) {
 	m := newTestModel(sampleServices())
-	// click en el 2do servicio (índice 1) dentro del sidebar
+	// Derivar la coordenada Y desde el render real, no desde las constantes de producción.
+	// Esto hace que el test falle si la geometría de handleMouse no coincide con View().
+	out := m.View()
+	lines := strings.Split(out, "\n")
+	targetName := sampleServices()[1].Name // "web"
+	targetY := -1
+	for i, line := range lines {
+		if strings.Contains(line, targetName) {
+			targetY = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, targetY, 0, "service %q not found in rendered output", targetName)
+
+	// click izquierdo en la fila del segundo servicio dentro del sidebar
 	click := tea.MouseMsg{
 		Action: tea.MouseActionPress,
 		Button: tea.MouseButtonLeft,
 		X:      3,
-		Y:      sidebarServiceRowY(1),
+		Y:      targetY,
 	}
 	m = mustUpdate(t, m, click)
 	require.Equal(t, 1, m.sidebar.cursor)

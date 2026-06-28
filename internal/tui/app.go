@@ -22,12 +22,12 @@ const (
 )
 
 // Constantes de geometría para el routing de mouse.
-// topBarHeight: filas que ocupa la barra superior (incluyendo "\n" de separación).
-// borderTop: fila del borde superior del sidebar/panel.
-// sidebarHeader: fila del encabezado "SERVICES (n)" dentro del sidebar.
+// topBarHeight: la barra superior ocupa 1 línea.
+// borderTop: fila del borde superior del sidebar/panel (1 fila del borde lipgloss redondeado).
+// sidebarHeader: línea "SERVICES (n)" dentro del borde.
 const (
-	topBarHeight  = 4 // top bar (3 líneas) + separador "\n"
-	borderTop     = 0 // el borde está incluido en topBarHeight al usar lipgloss
+	topBarHeight  = 1 // la barra superior ocupa 1 línea
+	borderTop     = 1 // borde superior del sidebar/panel
 	sidebarHeader = 1 // línea "SERVICES (n)" dentro del borde
 )
 
@@ -169,11 +169,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			" | Desired: " + strconv.Itoa(msg.desired))
 		if msg.done {
 			m.events.AppendLine(render.Success("✓ deployment completed"))
+			m.deployActive = false
 			m.deployDone = true
 			return m, m.loadServicesCmd()
 		}
 		if msg.failed {
 			m.events.AppendLine(render.Danger("✗ deployment failed"))
+			m.deployActive = false
 			m.deployDone = true
 			return m, m.loadServicesCmd()
 		}
@@ -277,6 +279,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case key.Matches(msg, m.keys.Refresh):
 		m.loading = true
+		m.status = ""
+		m.notice = ""
 		return m, m.loadServicesCmd()
 	case key.Matches(msg, m.keys.Deploy), key.Matches(msg, m.keys.Scale), key.Matches(msg, m.keys.Rollback):
 		return m.openAction(msg)
