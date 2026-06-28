@@ -72,3 +72,15 @@ func TestViewRendersWithoutPanic(t *testing.T) {
 	m := newTestModel(sampleServices())
 	require.NotEmpty(t, m.View())
 }
+
+func TestRefreshKeyReloads(t *testing.T) {
+	m := newTestModel(sampleServices())
+	_, cmd := m.Update(keyMsg("r"))
+	require.NotNil(t, cmd) // dispara recarga
+}
+
+func TestTickReloadsAndReschedules(t *testing.T) {
+	m := newTestModel(nil)
+	_, cmd := m.Update(tickMsg{})
+	require.NotNil(t, cmd)
+}

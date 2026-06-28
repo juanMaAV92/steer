@@ -114,6 +114,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 			return m, nil
 		}
+		m.err = nil
 		m.sidebar.setServices(msg.services)
 		return m, nil
 
@@ -159,7 +160,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		return m, tea.Quit
-	case key.Matches(msg, m.keys.Tab):
+	case key.Matches(msg, m.keys.Tab), key.Matches(msg, m.keys.ShiftTab):
 		if m.focus == focusSidebar {
 			m.focus = focusPanel
 		} else {
@@ -176,6 +177,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.focus == focusPanel {
 		switch {
 		case key.Matches(msg, m.keys.Down), key.Matches(msg, m.keys.Up):
+			// m.events es receptor-valor, pero la copia mutada se preserva porque se retorna via `return m, cmd`.
 			cmd := m.events.Update(msg)
 			return m, cmd
 		}
