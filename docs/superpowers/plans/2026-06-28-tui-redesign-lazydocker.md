@@ -185,9 +185,7 @@ Expected: PASS y build OK.
 
 ```bash
 git add internal/tui/keys.go internal/tui/styles.go internal/tui/keys_test.go internal/tui/model_test.go
-git commit -m "feat(tui): keymap centralizado y estilos base de paneles
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(tui): keymap centralizado y estilos base de paneles"
 ```
 
 ---
@@ -335,9 +333,7 @@ Expected: PASS (refactor sin cambio de comportamiento; los tests existentes sigu
 
 ```bash
 git add internal/tui/messages.go internal/tui/commands.go internal/tui/model.go
-git commit -m "refactor(tui): extraer mensajes y comandos de model.go
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "refactor(tui): extraer mensajes y comandos de model.go"
 ```
 
 ---
@@ -526,9 +522,7 @@ Expected: PASS.
 
 ```bash
 git add internal/tui/sidebar.go internal/tui/sidebar_test.go
-git commit -m "feat(tui): componente sidebar con secciones apiladas
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(tui): componente sidebar con secciones apiladas"
 ```
 
 ---
@@ -718,9 +712,7 @@ Expected: PASS.
 
 ```bash
 git add internal/tui/panel/tabs.go internal/tui/panel/details.go internal/tui/panel/tabs_test.go internal/tui/panel/details_test.go
-git commit -m "feat(tui): panel tabs y pestaña Details con fila de acciones
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(tui): panel tabs y pestaña Details con fila de acciones"
 ```
 
 ---
@@ -888,9 +880,7 @@ Expected: PASS. Si `bubbles/viewport` no resuelve, corre `go mod tidy` (mueve bu
 
 ```bash
 git add internal/tui/panel/events.go internal/tui/panel/logs.go internal/tui/panel/events_test.go internal/tui/panel/logs_test.go go.mod go.sum
-git commit -m "feat(tui): pestaña Events con viewport y stub de Logs
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(tui): pestaña Events con viewport y stub de Logs"
 ```
 
 ---
@@ -984,9 +974,7 @@ Expected: PASS.
 
 ```bash
 git add internal/tui/context.go internal/tui/context_test.go
-git commit -m "feat(tui): top bar de contexto y bottom bar de ayuda
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(tui): top bar de contexto y bottom bar de ayuda"
 ```
 
 ---
@@ -1133,9 +1121,7 @@ Expected: PASS (reusando `actionKind`/constantes de model.go; `action` es nuevo)
 
 ```bash
 git add internal/tui/action.go internal/tui/action_test.go
-git commit -m "feat(tui): overlay de acción deploy/scale/rollback
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(tui): overlay de acción deploy/scale/rollback"
 ```
 
 ---
@@ -1560,9 +1546,7 @@ Expected: PASS. Si hay imports sin uso (p.ej. el `case msg.Type == tea.KeyTab` v
 git add internal/tui/app.go internal/tui/app_test.go
 git rm --cached internal/tui/model.go internal/tui/model_test.go 2>/dev/null; true
 git add -A internal/tui/
-git commit -m "feat(tui): app root multi-panel con foco y routing de teclado
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(tui): app root multi-panel con foco y routing de teclado"
 ```
 
 ---
@@ -1682,9 +1666,7 @@ Expected: PASS.
 
 ```bash
 git add internal/tui/app.go internal/tui/app_test.go
-git commit -m "feat(tui): routing de mouse (click sidebar/pestañas, rueda scroll)
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(tui): routing de mouse (click sidebar/pestañas, rueda scroll)"
 ```
 
 ---
@@ -1852,9 +1834,7 @@ Expected: PASS. Si el test falla porque `action.service` se perdió, añade `dep
 
 ```bash
 git add internal/tui/app.go internal/tui/app_test.go
-git commit -m "feat(tui): deploy en vivo dentro de la pestaña Events
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(tui): deploy en vivo dentro de la pestaña Events"
 ```
 
 ---
@@ -1905,9 +1885,7 @@ Run: `go run ./cmd/steer tui -e staging` (o el binario equivalente del proyecto)
 
 ```bash
 git add internal/tui/run.go
-git commit -m "feat(tui): activar soporte de mouse en el programa
-
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+git commit -m "feat(tui): activar soporte de mouse en el programa"
 ```
 
 ---
