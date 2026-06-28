@@ -17,6 +17,17 @@ func TestTabsNextCycles(t *testing.T) {
 	require.Equal(t, TabDetails, tb.Active)
 }
 
+func TestTabsPrevCycles(t *testing.T) {
+	tb := Tabs{}
+	require.Equal(t, TabDetails, tb.Active)
+	tb.Prev() // hacia atrás desde el inicio → última pestaña
+	require.Equal(t, TabLogs, tb.Active)
+	tb.Prev()
+	require.Equal(t, TabEvents, tb.Active)
+	tb.Prev()
+	require.Equal(t, TabDetails, tb.Active)
+}
+
 func TestTabsViewShowsAllTabs(t *testing.T) {
 	tb := Tabs{Active: TabEvents}
 	out := tb.View()

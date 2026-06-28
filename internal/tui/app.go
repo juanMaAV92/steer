@@ -299,10 +299,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cmd := m.events.Update(msg)
 			return m, cmd
 		}
-		// permitir cambiar pestaña con left/right
+		// cambiar pestaña: derecha/izquierda (cíclico en ambos sentidos)
 		switch msg.String() {
 		case "right", "l":
 			m.tabs.Next()
+		case "left", "h":
+			m.tabs.Prev()
 		}
 		return m, nil
 	}
