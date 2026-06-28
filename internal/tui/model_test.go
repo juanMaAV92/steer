@@ -66,18 +66,6 @@ func TestTickReloadsAndReschedules(t *testing.T) {
 	require.NotNil(t, cmd)
 }
 
-func keyMsg(s string) tea.KeyMsg {
-	switch s {
-	case "ctrl+c":
-		return tea.KeyMsg{Type: tea.KeyCtrlC}
-	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
-	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
-	default:
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
-	}
-}
 
 func TestEnterOpensDetailEscReturns(t *testing.T) {
 	m := newTestModel(nil)
