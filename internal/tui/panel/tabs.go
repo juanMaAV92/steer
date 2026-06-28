@@ -29,9 +29,9 @@ func (t Tab) String() string {
 // Tabs es el estado de la barra de pestañas.
 type Tabs struct{ Active Tab }
 
-func (tb *Tabs) Next()      { tb.Active = (tb.Active + 1) % Tab(tb.Count()) }
-func (tb *Tabs) Set(t Tab)  { tb.Active = t }
-func (tb Tabs) Count() int  { return 3 }
+func (tb *Tabs) Next()     { tb.Active = (tb.Active + 1) % Tab(tb.Count()) }
+func (tb *Tabs) Set(t Tab) { tb.Active = t }
+func (tb Tabs) Count() int { return 3 }
 
 func (tb Tabs) View() string {
 	parts := make([]string, 0, tb.Count())

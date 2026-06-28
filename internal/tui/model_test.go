@@ -66,7 +66,6 @@ func TestTickReloadsAndReschedules(t *testing.T) {
 	require.NotNil(t, cmd)
 }
 
-
 func TestEnterOpensDetailEscReturns(t *testing.T) {
 	m := newTestModel(nil)
 	m.services = []core.ServiceStatus{{Name: "catalog"}}
