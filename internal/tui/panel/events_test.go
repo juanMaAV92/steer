@@ -16,6 +16,7 @@ func TestEventsAppendAndView(t *testing.T) {
 	require.Contains(t, out, "task started")
 	require.Contains(t, out, "task running")
 	require.Contains(t, out, "Rollout: IN_PROGRESS")
+	require.NotContains(t, out, "no events yet")
 }
 
 func TestEventsReset(t *testing.T) {

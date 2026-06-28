@@ -43,7 +43,10 @@ func (e *Events) Reset() {
 func (e *Events) sync() {
 	body := strings.Join(e.lines, "\n")
 	if e.statusLine != "" {
-		body += "\n\n" + e.statusLine
+		if body != "" {
+			body += "\n\n"
+		}
+		body += e.statusLine
 	}
 	if body == "" {
 		body = render.Dim("no events yet")
