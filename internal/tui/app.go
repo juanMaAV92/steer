@@ -140,6 +140,51 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.loadServicesCmd()
 
+	case deployStartedMsg:
+		for _, s := range msg.steps {
+			m.events.AppendLine(render.Dim("[*] " + s))
+		}
+		if msg.err != nil {
+			m.events.AppendLine(render.Danger("error: " + msg.err.Error()))
+			m.deployDone = true
+			return m, nil
+		}
+		m.deployLastID = msg.lastID
+		return m, deployPollCmd(m.dep, m.cluster, m.deployService, m.deployLastID)
+
+	case deployPollMsg:
+		if msg.err != nil {
+			m.events.AppendLine(render.Danger("error: " + msg.err.Error()))
+			m.deployDone = true
+			return m, m.loadServicesCmd()
+		}
+		for i := len(msg.events) - 1; i >= 0; i-- {
+			e := msg.events[i]
+			m.events.AppendLine(render.Dim("[" + e.At.Format("15:04:05") + "] " + e.Message))
+		}
+		m.deployLastID = msg.lastID
+		m.events.SetStatusLine("Rollout: " + rolloutColored(msg.rollout) +
+			" | Running: " + strconv.Itoa(msg.running) +
+			" | Pending: " + strconv.Itoa(msg.pending) +
+			" | Desired: " + strconv.Itoa(msg.desired))
+		if msg.done {
+			m.events.AppendLine(render.Success("✓ deployment completed"))
+			m.deployDone = true
+			return m, m.loadServicesCmd()
+		}
+		if msg.failed {
+			m.events.AppendLine(render.Danger("✗ deployment failed"))
+			m.deployDone = true
+			return m, m.loadServicesCmd()
+		}
+		return m, deployTickCmd()
+
+	case deployPollTickMsg:
+		if m.deployActive && !m.deployDone {
+			return m, deployPollCmd(m.dep, m.cluster, m.deployService, m.deployLastID)
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 
@@ -201,6 +246,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Enter):
 			if !m.action.ready() {
 				return m, nil
+			}
+			if m.action.kind == actionDeploy {
+				// el flujo de deploy en vivo se arranca directamente, no via runActionCmd
+				svc, tag := m.action.service, m.action.input
+				m.action.close()
+				m.focus = focusPanel
+				m.tabs.Active = panel.TabEvents
+				m.events.Reset()
+				m.deployActive, m.deployDone = true, false
+				m.deployService = svc
+				return m, startDeployCmd(m.dep, m.cluster, svc, tag)
 			}
 			return m, m.runActionCmd()
 		default:
@@ -343,5 +399,17 @@ func (m Model) panelBody() string {
 		return panel.LogsView()
 	default:
 		return panel.DetailsView(s, m.writable)
+	}
+}
+
+// rolloutColored colorea el estado del rollout según su nivel.
+func rolloutColored(state string) string {
+	switch state {
+	case "COMPLETED":
+		return render.Success(state)
+	case "FAILED":
+		return render.Danger(state)
+	default:
+		return render.Accent(state)
 	}
 }

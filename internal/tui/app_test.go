@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/juanMaAV92/steer/internal/core/coretest"
+	"github.com/juanMaAV92/steer/internal/tui/panel"
 	"github.com/stretchr/testify/require"
 )
 
@@ -115,4 +116,40 @@ func TestMouseWheelScrollsPanelWhenFocused(t *testing.T) {
 	// no debe panic ni cambiar de servicio
 	m = mustUpdate(t, m, wheel)
 	require.Equal(t, focusPanel, m.focus)
+}
+
+func TestDeployFlowFeedsEventsPanel(t *testing.T) {
+	fake := &coretest.FakeDeployer{
+		Services:        sampleServices(),
+		DeploymentValue: core.Deployment{Rollout: "COMPLETED", Running: 2, Desired: 2},
+	}
+	m := New(fake, "stg-cluster", "stg", true)
+	m.sidebar.setServices(fake.Services)
+	m, _ = applySize(m, 120, 40)
+
+	// abrir deploy del 1er servicio (api) y teclear tag
+	m = mustUpdate(t, m, keyMsg("d"))
+	require.Equal(t, focusAction, m.focus)
+	for _, r := range "v2" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	// enter ejecuta: devuelve startDeployCmd y salta a Events
+	updated, cmd := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.Equal(t, panel.TabEvents, m.tabs.Active)
+	require.NotNil(t, cmd)
+
+	started := cmd().(deployStartedMsg)
+	require.NoError(t, started.err)
+	require.Equal(t, []string{"stg-cluster/api/v2"}, fake.DeployCalls)
+
+	updated, cmd = m.Update(started)
+	m = updated.(Model)
+	require.NotNil(t, cmd) // primer poll
+
+	poll := cmd().(deployPollMsg)
+	updated, _ = m.Update(poll)
+	m = updated.(Model)
+	require.True(t, m.deployDone)
+	require.Contains(t, m.events.View(), "completed")
 }
