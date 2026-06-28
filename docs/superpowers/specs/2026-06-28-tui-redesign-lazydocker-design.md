@@ -174,3 +174,7 @@ tests sin terminal real.
 
 - Atajo y forma del selector de contexto interactivo (multi-cluster/multi-cloud); en v1
   solo se reserva el espacio en el top bar.
+- **Click sobre la fila de acciones `[d]/[s]/[R]`** del panel Details: en v1 las acciones
+  se disparan por teclado (`d`/`s`/`R`); el click directo sobre esos botones queda
+  diferido (la geometría de filas del Details es frágil de mapear). El mouse en v1 cubre
+  click en servicios del sidebar, click en pestañas y rueda para scroll.
