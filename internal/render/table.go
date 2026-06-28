@@ -20,7 +20,15 @@ func Table(headers []string, rows [][]string) string {
 	return t.String()
 }
 
-// Accent colorea texto en verde (tags y valores destacados).
+// BrandColor es el cian de identidad de steer (mismo tono que la marca de Go).
+const BrandColor = "#00ADD8"
+
+// Accent colorea texto con el cian de marca (tags y valores destacados).
 func Accent(s string) string {
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render(s)
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(BrandColor)).Render(s)
+}
+
+// Brand colorea texto con el cian de marca en negrita (wordmark "steer").
+func Brand(s string) string {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(BrandColor)).Bold(true).Render(s)
 }
