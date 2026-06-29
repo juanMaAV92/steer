@@ -268,12 +268,10 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	// click en la zona del panel: primera fila útil = pestañas
 	panelRow := msg.Y - (topBarHeight + borderTop)
 	if panelRow == 0 {
-		seg := m.panelW / m.tabs.Count()
-		if seg < 1 {
-			seg = 1
-		}
-		idx := (msg.X - m.sidebarW) / seg
-		if idx >= 0 && idx < m.tabs.Count() {
+		// el contenido del panel empieza tras el borde del sidebar + el borde del panel:
+		// sidebar = [borde][contenido sidebarW][borde], luego [borde panel][contenido].
+		panelContentX0 := m.sidebarW + 3
+		if idx := m.tabs.TabAtColumn(msg.X - panelContentX0); idx >= 0 {
 			m.tabs.Set(panel.Tab(idx))
 		}
 	}

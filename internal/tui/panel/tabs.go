@@ -35,6 +35,22 @@ func (tb *Tabs) Prev()     { tb.Active = (tb.Active - 1 + Tab(tb.Count())) % Tab
 func (tb *Tabs) Set(t Tab) { tb.Active = t }
 func (tb Tabs) Count() int { return 3 }
 
+// TabAtColumn devuelve el índice de la pestaña cuya etiqueta cubre la columna x
+// (relativa al inicio del contenido del panel), o -1 si x cae fuera de toda etiqueta.
+// Replica el layout de View(): etiquetas separadas por dos espacios, en orden.
+// Las etiquetas son ASCII, así que len() == ancho de display.
+func (tb Tabs) TabAtColumn(x int) int {
+	col := 0
+	for i := 0; i < tb.Count(); i++ {
+		w := len(Tab(i).String())
+		if x >= col && x < col+w {
+			return i
+		}
+		col += w + 2 // etiqueta + separador "  "
+	}
+	return -1
+}
+
 // activeTabStyle resalta la pestaña activa con el cian de marca y subrayado.
 var activeTabStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(render.BrandColor)).

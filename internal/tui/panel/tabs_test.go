@@ -28,6 +28,20 @@ func TestTabsPrevCycles(t *testing.T) {
 	require.Equal(t, TabDetails, tb.Active)
 }
 
+func TestTabAtColumn(t *testing.T) {
+	var tb Tabs
+	// layout: "Details"(0-6) "  "(7-8) "Events"(9-14) "  "(15-16) "Logs"(17-20)
+	require.Equal(t, int(TabDetails), tb.TabAtColumn(0))
+	require.Equal(t, int(TabDetails), tb.TabAtColumn(6))
+	require.Equal(t, -1, tb.TabAtColumn(7)) // separador
+	require.Equal(t, int(TabEvents), tb.TabAtColumn(9))
+	require.Equal(t, int(TabEvents), tb.TabAtColumn(14))
+	require.Equal(t, int(TabLogs), tb.TabAtColumn(17))
+	require.Equal(t, int(TabLogs), tb.TabAtColumn(20))
+	require.Equal(t, -1, tb.TabAtColumn(21)) // fuera de rango
+	require.Equal(t, -1, tb.TabAtColumn(-1))
+}
+
 func TestTabsViewShowsAllTabs(t *testing.T) {
 	tb := Tabs{Active: TabEvents}
 	out := tb.View()

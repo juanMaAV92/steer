@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/juanMaAV92/steer/internal/config"
@@ -167,6 +168,52 @@ func TestClickTopBarOpensContextPicker(t *testing.T) {
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: 0}
 	m = mustUpdate(t, m, click)
 	require.Equal(t, focusContextPicker, m.focus)
+}
+
+// stripANSI quita los códigos de escape ANSI (ancho cero) para localizar columnas reales.
+func stripANSI(s string) string {
+	var b strings.Builder
+	inEsc := false
+	for _, r := range s {
+		if r == 0x1b {
+			inEsc = true
+			continue
+		}
+		if inEsc {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+				inEsc = false
+			}
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// Click sobre la pestaña "Events" del panel la activa. Anclado al render:
+// X e Y se derivan de la posición real del texto "Events" en View().
+func TestClickPanelTabSwitches(t *testing.T) {
+	m := newTestModel(sampleServices())
+	require.Equal(t, panel.TabDetails, m.tabs.Active) // arranca en Details
+
+	out := m.View()
+	clickX, clickY := -1, -1
+	for y, line := range strings.Split(out, "\n") {
+		clean := stripANSI(line)
+		if i := strings.Index(clean, "Events"); i >= 0 && strings.Contains(clean, "Details") {
+			// X del mouse es columna de celda (runas), no offset de bytes:
+			// los bordes │ (U+2502) ocupan 3 bytes pero 1 columna.
+			clickX = utf8.RuneCountInString(clean[:i])
+			clickY = y
+			break
+		}
+	}
+	require.GreaterOrEqual(t, clickX, 0, "no se encontró la pestaña Events en el render")
+
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY}
+	m = mustUpdate(t, m, click)
+	require.Equal(t, panel.TabEvents, m.tabs.Active)
+	require.Equal(t, focusPanel, m.focus)
 }
 
 // Click sobre una fila del picker conmuta a ese contexto. Anclado al render:
