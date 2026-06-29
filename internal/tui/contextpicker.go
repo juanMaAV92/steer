@@ -62,6 +62,27 @@ func (p contextPicker) selected() (config.Context, bool) {
 
 func (p contextPicker) rowCount() int { return len(p.contexts) }
 
+// indexAtLine mapea una línea (relativa al inicio del picker, donde la línea 0 es el
+// título "Switch context") al índice de contexto que se renderiza en esa línea.
+// Replica la estructura de view(): título, y por cada contexto un header de cloud
+// cuando cambia de cloud, seguido de la fila del contexto. Devuelve ok=false si la
+// línea no corresponde a una fila de contexto (título, header, o fuera de rango).
+func (p contextPicker) indexAtLine(line int) (int, bool) {
+	cur := 1 // la línea 0 es el título
+	lastCloud := ""
+	for i, c := range p.contexts {
+		if c.Cloud != lastCloud {
+			cur++ // línea de header de cloud
+			lastCloud = c.Cloud
+		}
+		if cur == line {
+			return i, true
+		}
+		cur++ // línea de la fila del contexto
+	}
+	return 0, false
+}
+
 func (p contextPicker) view() string {
 	var b strings.Builder
 	b.WriteString(render.Bold("Switch context") + "\n")
@@ -89,6 +110,6 @@ func (p contextPicker) view() string {
 		}
 		b.WriteString(cursor + name + "  " + state + extra + "\n")
 	}
-	b.WriteString(render.Dim("\n↑↓ select · enter switch · esc cancel"))
+	b.WriteString(render.Dim("\n↑↓/click select · enter switch · esc cancel"))
 	return b.String()
 }

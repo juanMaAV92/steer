@@ -169,6 +169,29 @@ func TestClickTopBarOpensContextPicker(t *testing.T) {
 	require.Equal(t, focusContextPicker, m.focus)
 }
 
+// Click sobre una fila del picker conmuta a ese contexto. Anclado al render:
+// la Y del click se deriva de la línea real donde aparece el nombre en View().
+func TestClickPickerRowSwitchesContext(t *testing.T) {
+	m := multiCtxModel(t)
+	m = mustUpdate(t, m, keyMsg("c")) // abrir picker
+	require.Equal(t, focusContextPicker, m.focus)
+
+	out := m.View()
+	clickY := -1
+	for i, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "nao-prod") {
+			clickY = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, clickY, 0, "no se encontró la fila nao-prod en el render")
+
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 4, Y: clickY}
+	m = mustUpdate(t, m, click)
+	require.Equal(t, "nao-prod", m.current.Name)
+	require.Equal(t, focusSidebar, m.focus)
+}
+
 func TestSwitchToWritableContextReloads(t *testing.T) {
 	m := multiCtxModel(t)
 	m = mustUpdate(t, m, keyMsg("c"))

@@ -44,6 +44,28 @@ func TestPickerViewGroupsByCloudAndMarksNotImpl(t *testing.T) {
 	require.Contains(t, strings.ToLower(out), "no impl")   // gcp
 }
 
+func TestPickerIndexAtLine(t *testing.T) {
+	// orden: aws(nao-dev, nao-prod), gcp(acme-staging)
+	// líneas del picker: 0 título · 1 "AWS" · 2 nao-dev · 3 nao-prod · 4 "GCP" · 5 acme-staging
+	p := newContextPicker(samplePickerContexts(), "nao-dev")
+	idx, ok := p.indexAtLine(2)
+	require.True(t, ok)
+	require.Equal(t, "nao-dev", p.contexts[idx].Name)
+	idx, ok = p.indexAtLine(3)
+	require.True(t, ok)
+	require.Equal(t, "nao-prod", p.contexts[idx].Name)
+	idx, ok = p.indexAtLine(5)
+	require.True(t, ok)
+	require.Equal(t, "acme-staging", p.contexts[idx].Name)
+	// título y headers de cloud no son filas de contexto
+	_, ok = p.indexAtLine(0)
+	require.False(t, ok)
+	_, ok = p.indexAtLine(1)
+	require.False(t, ok)
+	_, ok = p.indexAtLine(4)
+	require.False(t, ok)
+}
+
 func TestPickerSelectIndex(t *testing.T) {
 	p := newContextPicker(samplePickerContexts(), "nao-dev")
 	p.selectIndex(2)

@@ -212,7 +212,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 
 	case tea.MouseMsg:
+		// mientras el picker está abierto, el overlay captura el mouse (click-to-select)
+		if m.focus == focusContextPicker {
+			return m.handlePickerMouse(msg)
+		}
 		return m, m.handleMouse(msg)
+	}
+	return m, nil
+}
+
+// handlePickerMouse maneja el mouse mientras el selector de contexto está abierto:
+// un click izquierdo sobre una fila la conmuta; cualquier otro evento se traga
+// (no cierra el overlay ni muta el estado por debajo).
+func (m Model) handlePickerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		// el picker se renderiza tras la barra superior: línea de picker = Y - topBarHeight
+		if idx, ok := m.picker.indexAtLine(msg.Y - topBarHeight); ok {
+			m.picker.selectIndex(idx)
+			return m.applyContextSwitch()
+		}
 	}
 	return m, nil
 }
@@ -220,11 +238,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleMouse enruta los eventos de mouse a la zona correcta:
 // rueda → scroll del panel de eventos, click izquierdo → selección en sidebar o pestaña en panel.
 func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
-	// mientras el overlay del picker esté abierto, capturar todos los eventos de mouse
-	// para evitar que caigan al sidebar/panel y muten el estado por debajo
-	if m.focus == focusContextPicker {
-		return nil
-	}
 	// rueda: scroll en el panel de eventos si el cursor está sobre el panel
 	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
 		if msg.X > m.sidebarW {
