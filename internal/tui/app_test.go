@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/juanMaAV92/steer/internal/config"
@@ -12,6 +14,13 @@ import (
 	"github.com/juanMaAV92/steer/internal/tui/panel"
 	"github.com/stretchr/testify/require"
 )
+
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// stripANSI elimina secuencias de escape ANSI de una cadena.
+func stripANSI(s string) string {
+	return ansiRE.ReplaceAllString(s, "")
+}
 
 func newTestModel(services []core.ServiceStatus) Model {
 	fake := &coretest.FakeDeployer{Services: services}
@@ -285,4 +294,50 @@ func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 	m = updated.(Model)
 	require.True(t, m.deployDone)
 	require.Contains(t, m.events.View(), "completed")
+}
+
+// TestClickDetailsDeployButton verifica que un click en [ Deploy (d) ] abre el modal de deploy.
+// Anclado al render: la Y y X se derivan del texto real de View().
+func TestClickDetailsDeployButton(t *testing.T) {
+	m := newTestModel(sampleServices()) // foco sidebar, tab Details, writable
+	out := m.View()
+	clickX, clickY := -1, -1
+	for y, line := range strings.Split(out, "\n") {
+		clean := stripANSI(line)
+		if i := strings.Index(clean, "Deploy (d)"); i >= 0 {
+			clickX = utf8.RuneCountInString(clean[:i]) + 1 // dentro de "[ Deploy..."
+			clickY = y
+			break
+		}
+	}
+	require.GreaterOrEqual(t, clickX, 0, "no se encontró el botón Deploy en el render")
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY}
+	m = mustUpdate(t, m, click)
+	require.Equal(t, focusAction, m.focus)
+	require.Equal(t, actionDeploy, m.action.kind)
+}
+
+// TestClickCancelsActionModal verifica que con el modal abierto, cualquier click lo cancela.
+func TestClickCancelsActionModal(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("d")) // abre deploy
+	require.Equal(t, focusAction, m.focus)
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 1, Y: 1}
+	m = mustUpdate(t, m, click)
+	require.NotEqual(t, focusAction, m.focus) // cerrado
+	require.False(t, m.action.active)
+}
+
+// TestReadOnlyDetailsButtonsNoOp verifica que en read-only, el click en la fila de botones no abre acción.
+func TestReadOnlyDetailsButtonsNoOp(t *testing.T) {
+	fake := &coretest.FakeDeployer{Services: sampleServices()}
+	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	cur := config.Context{Name: "prod", Cloud: "aws", Cluster: "c", Writable: false}
+	m := New(factory, []config.Context{cur}, cur)
+	m.sidebar.setServices(sampleServices())
+	m, _ = applySize(m, 120, 40)
+	// click donde estaría la fila de botones; en read-only no hay botones → no-op
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: m.sidebarW + 5, Y: 11}
+	m = mustUpdate(t, m, click)
+	require.NotEqual(t, focusAction, m.focus)
 }

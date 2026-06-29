@@ -238,6 +238,14 @@ func (m Model) handlePickerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // handleMouse enruta los eventos de mouse a la zona correcta:
 // rueda → scroll del panel de eventos, click izquierdo → selección en sidebar o pestaña en panel.
 func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
+	// con el modal de acción abierto, cualquier click lo cancela (captura el mouse)
+	if m.focus == focusAction {
+		if msg.Action == tea.MouseActionPress {
+			m.action.close()
+			m.focus = focusSidebar
+		}
+		return nil
+	}
 	// rueda: scroll en el panel de eventos si el cursor está sobre el panel
 	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
 		if msg.X > m.sidebarW {
@@ -264,6 +272,15 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 			m.focus = focusSidebar
 		}
 		return nil
+	}
+	// click en la fila de botones de acción del panel Details
+	const detailsButtonRowY = 11 // topBar(1)+borde(1)+tabs(1)+blanco(1)+details: name,blank,4 stats,blank,botones
+	if m.current.Writable && m.tabs.Active == panel.TabDetails && msg.Y == detailsButtonRowY {
+		localX := msg.X - (m.sidebarW + 3)
+		if idx := render.ButtonAtColumn(panel.DetailsActionLabels, localX); idx >= 0 {
+			m.openActionKind(actionKindFor(idx))
+			return nil
+		}
 	}
 	// click en la zona del panel: primera fila útil = pestañas
 	panelRow := msg.Y - (topBarHeight + borderTop)
@@ -473,6 +490,29 @@ func (m *Model) runActionCmd() tea.Cmd {
 	}
 }
 
+// actionKindFor mapea el índice del botón de Details a su actionKind.
+func actionKindFor(idx int) actionKind {
+	switch idx {
+	case 1:
+		return actionScale
+	case 2:
+		return actionRollback
+	default:
+		return actionDeploy
+	}
+}
+
+// openActionKind abre el modal para una acción (usado por el click en botones de Details).
+func (m *Model) openActionKind(kind actionKind) {
+	s, ok := m.sidebar.selected()
+	if !ok {
+		return
+	}
+	m.action.open(kind, s.Name)
+	m.notice = ""
+	m.focus = focusAction
+}
+
 func (m Model) View() string {
 	if m.err != nil {
 		return render.Danger("error: "+m.err.Error()) + "\n" + render.Dim("press q to quit")
@@ -504,10 +544,12 @@ func (m Model) View() string {
 		body = lipgloss.JoinHorizontal(lipgloss.Top, side, pan)
 	}
 
-	bottom := bottomBar(m.keys.shortHelp(), m.notice, m.status)
+	// modal de acción: reemplaza el cuerpo con el overlay centrado
 	if m.focus == focusAction {
-		bottom = m.action.modalView(m.width, m.bodyH)
+		return top + "\n" + m.action.modalView(m.width, m.bodyH) + "\n" +
+			bottomBar(m.keys.shortHelp(), m.notice, m.status)
 	}
+	bottom := bottomBar(m.keys.shortHelp(), m.notice, m.status)
 	return top + "\n" + body + "\n" + bottom
 }
 
