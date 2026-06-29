@@ -52,12 +52,14 @@ El modal se dibuja como una caja redondeada **centrada sobre el cuerpo** con `li
   `[ Confirm (↵) ]` / `[ Cancel (esc) ]`.
 - **Teclado** (sin cambio respecto a hoy): teclear alimenta el campo (no aplica a rollback),
   `enter` confirma si el input es válido, `esc` cancela.
-- **Mouse**:
-  - Click en el botón de confirmar (`Deploy`/`Scale`/`Confirm`) → ejecuta (igual que enter).
-  - Click en `[ Cancel ]` → cierra sin ejecutar.
-  - Click **fuera del modal** → cancela (cierra).
+- **Mouse** (decisión: teclado + click-fuera-cancela, sin hit-testing de los botones del
+  modal para evitar geometría frágil del centrado):
+  - Los botones `[ Deploy (↵) ]` / `[ Cancel (esc) ]` se muestran como **indicadores de
+    tecla**, no son clickeables individualmente.
+  - Click **fuera del modal** (en cualquier parte) → cancela (cierra).
   - El modal **captura todos los eventos de mouse** mientras está abierto (no se filtran al
     sidebar/panel por debajo), igual que el `contextPicker`.
+  - (Botones del modal clickeables → diferido; el flujo natural es teclear el tag + enter.)
 - Al confirmar un **deploy**, el flujo en vivo sigue alimentando la pestaña **Events** tal
   como ya funciona hoy (no cambia).
 
@@ -83,8 +85,8 @@ El modal se dibuja como una caja redondeada **centrada sobre el cuerpo** con `li
   - `handleKey`: la rama del modal mantiene el comportamiento actual (teclear/enter/esc).
   - `handleMouse`: (a) en el panel Details, click en la fila de botones → abre la acción
     (reusando el helper de botones + la geometría del panel, `panelContentX0 = sidebarW + 3`);
-    (b) cuando el foco es el modal, enruta el click a los botones del modal o cancela si es
-    fuera, y traga el resto.
+    (b) cuando el foco es el modal, cualquier click cancela (cierra) — el modal captura el
+    mouse y no se filtra al cuerpo.
 
 ## Manejo de errores / casos borde
 
@@ -115,10 +117,10 @@ El modal se dibuja como una caja redondeada **centrada sobre el cuerpo** con `li
 - **Details**: `DetailsView` contiene los tres botones con su tecla; en read-only muestra el
   aviso y no botones activos.
 - **app (anclado al render)**:
-  - Click en `[ Deploy (d) ]` de Details abre el modal (`focus == focusActionModal`, kind deploy).
-  - En el modal: click en `[ Cancel ]` cierra (vuelve a sidebar/panel, sin ejecutar); click en
-    `[ Deploy ]` con input válido ejecuta (devuelve cmd); click fuera del modal cancela.
+  - Click en `[ Deploy (d) ]` de Details abre el modal (`focus == focusAction`, kind deploy);
+    click en `[ Scale (s) ]` / `[ Rollback (R) ]` abren la suya.
+  - En el modal: cualquier click cancela (vuelve a sidebar/panel, sin ejecutar); el click no
+    se filtra al cuerpo.
   - Teclado en el modal sigue funcionando (teclear tag → `ready()`; enter ejecuta; esc cancela).
-  - El modal traga clicks que caen fuera de sus botones pero dentro del overlay (no muta el
-    sidebar/panel por debajo).
+  - Read-only: click en la fila de botones de Details no abre acción (no-op).
 - `go test ./...`, `go build ./...`, `go vet ./...` en verde.
