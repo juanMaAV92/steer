@@ -10,19 +10,17 @@ import (
 	"time"
 
 	"github.com/juanMaAV92/steer/internal/core"
-	"github.com/juanMaAV92/steer/internal/providers/aws"
 	"github.com/juanMaAV92/steer/internal/render"
 	"github.com/spf13/cobra"
 )
 
 // newDeployerFn es un seam inyectable: en tests se reemplaza por un fake.
 var newDeployerFn = func(app *AppContext) (core.Deployer, string, error) {
-	cfg, err := aws.LoadConfig(context.Background(), app.Env)
+	dep, err := app.Factory(app.Ctx)
 	if err != nil {
 		return nil, "", err
 	}
-	cluster := app.Config.Providers.AWS.Naming.Cluster(app.EnvName)
-	return aws.NewDeployer(cfg), cluster, nil
+	return dep, app.Ctx.Cluster, nil
 }
 
 // NewServiceCmd agrupa los comandos de la capacidad service.
@@ -147,7 +145,7 @@ func newServiceDeployCmd() *cobra.Command {
 				}
 				service, tag = s, tg
 			}
-			realName := app.Config.Providers.AWS.Naming.Service(app.EnvName, service)
+			realName := app.Ctx.ServiceName(service)
 
 			current, err := dep.CurrentTag(cmd.Context(), cluster, realName)
 			if err != nil {
@@ -155,7 +153,7 @@ func newServiceDeployCmd() *cobra.Command {
 			}
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "%s (%s):\n  %s: %s %s %s\n",
-				render.Bold("Deploy preview"), app.EnvName,
+				render.Bold("Deploy preview"), app.Ctx.Name,
 				render.Bold(service), render.Dim(current), render.Dim("->"), render.Accent(tag))
 
 			if !yes {
@@ -173,7 +171,7 @@ func newServiceDeployCmd() *cobra.Command {
 			}
 			fmt.Fprintf(out, "%s %s %s %s\n%s\n",
 				render.Success("✓ deployed"), render.Bold(service), render.Dim("->"), render.Accent(tag),
-				render.Dim(fmt.Sprintf("rollback with: steer -e %s service rollback -s %s", app.EnvName, service)))
+				render.Dim(fmt.Sprintf("rollback with: steer --context %s service rollback -s %s", app.Ctx.Name, service)))
 
 			if watch {
 				return watchRollout(cmd.Context(), out, dep, cluster, realName, interval)
@@ -288,9 +286,9 @@ func newServiceScaleCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			realName := app.Config.Providers.AWS.Naming.Service(app.EnvName, service)
+			realName := app.Ctx.ServiceName(service)
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Scale %s to %d in %s\n", service, count, app.EnvName)
+			fmt.Fprintf(out, "Scale %s to %d in %s\n", service, count, app.Ctx.Name)
 			if !yes {
 				fmt.Fprint(out, "Apply? [y/N]: ")
 				if !confirm(cmd.InOrStdin()) {
@@ -329,9 +327,9 @@ func newServiceRollbackCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			realName := app.Config.Providers.AWS.Naming.Service(app.EnvName, service)
+			realName := app.Ctx.ServiceName(service)
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Roll back %s in %s to previous revision\n", service, app.EnvName)
+			fmt.Fprintf(out, "Roll back %s in %s to previous revision\n", service, app.Ctx.Name)
 			if !yes {
 				fmt.Fprint(out, "Apply? [y/N]: ")
 				if !confirm(cmd.InOrStdin()) {

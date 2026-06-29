@@ -26,5 +26,5 @@ func defaultKeys() keyMap {
 }
 
 func (k keyMap) shortHelp() string {
-	return "↑↓/click select · tab switch panel · d deploy · s scale · R rollback · r refresh · ? help · q quit"
+	return "↑↓/click select · tab switch panel · d deploy · s scale · R rollback · r refresh · c context · ? help · q quit"
 }

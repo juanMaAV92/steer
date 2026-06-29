@@ -5,14 +5,19 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/juanMaAV92/steer/internal/core/coretest"
+	"github.com/juanMaAV92/steer/internal/providers"
 	"github.com/juanMaAV92/steer/internal/tui/panel"
 	"github.com/stretchr/testify/require"
 )
 
 func newTestModel(services []core.ServiceStatus) Model {
-	m := New(&coretest.FakeDeployer{Services: services}, "stg-cluster", "stg", true, "")
+	fake := &coretest.FakeDeployer{Services: services}
+	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
+	m := New(factory, []config.Context{cur}, cur)
 	m.sidebar.setServices(services)
 	m, _ = applySize(m, 120, 40)
 	return m
@@ -60,12 +65,15 @@ func TestQuitKeys(t *testing.T) {
 }
 
 func TestReadOnlyBlocksActions(t *testing.T) {
-	ro := New(&coretest.FakeDeployer{Services: sampleServices()}, "prod-cluster", "production", false, "")
+	fake := &coretest.FakeDeployer{Services: sampleServices()}
+	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	cur := config.Context{Name: "production", Cloud: "aws", Cluster: "prod-cluster", Writable: false}
+	ro := New(factory, []config.Context{cur}, cur)
 	ro.sidebar.setServices(sampleServices())
 	ro, _ = applySize(ro, 120, 40)
 	for _, key := range []string{"d", "s", "R"} {
 		m := mustUpdate(t, ro, keyMsg(key))
-		require.NotEqual(t, focusAction, m.focus, "key %q must not open action overlay in read-only", key)
+		require.NotEqual(t, focusAction, m.focus)
 		require.NotEmpty(t, m.notice)
 	}
 }
@@ -127,12 +135,128 @@ func TestMouseWheelScrollsPanelWhenFocused(t *testing.T) {
 	require.Equal(t, focusPanel, m.focus)
 }
 
+func multiCtxModel(t *testing.T) Model {
+	t.Helper()
+	fake := &coretest.FakeDeployer{Services: sampleServices()}
+	factory := func(c config.Context) (core.Deployer, error) {
+		if c.Cloud != "aws" {
+			return nil, providers.ErrProviderNotImplemented
+		}
+		return fake, nil
+	}
+	ctxs := []config.Context{
+		{Name: "nao-dev", Cloud: "aws", Cluster: "c1", Writable: true},
+		{Name: "nao-prod", Cloud: "aws", Cluster: "c2", Writable: false},
+		{Name: "acme-staging", Cloud: "gcp", Cluster: "c3", Writable: true},
+	}
+	m := New(factory, ctxs, ctxs[0])
+	m.sidebar.setServices(sampleServices())
+	m, _ = applySize(m, 120, 40)
+	return m
+}
+
+func TestOpenContextPicker(t *testing.T) {
+	m := multiCtxModel(t)
+	m = mustUpdate(t, m, keyMsg("c"))
+	require.Equal(t, focusContextPicker, m.focus)
+}
+
+// Un click izquierdo en la barra superior (Y=0) abre el selector de contexto.
+func TestClickTopBarOpensContextPicker(t *testing.T) {
+	m := multiCtxModel(t)
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: 0}
+	m = mustUpdate(t, m, click)
+	require.Equal(t, focusContextPicker, m.focus)
+}
+
+// Click sobre una fila del picker conmuta a ese contexto. Anclado al render:
+// la Y del click se deriva de la línea real donde aparece el nombre en View().
+func TestClickPickerRowSwitchesContext(t *testing.T) {
+	m := multiCtxModel(t)
+	m = mustUpdate(t, m, keyMsg("c")) // abrir picker
+	require.Equal(t, focusContextPicker, m.focus)
+
+	out := m.View()
+	clickY := -1
+	for i, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "nao-prod") {
+			clickY = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, clickY, 0, "no se encontró la fila nao-prod en el render")
+
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 4, Y: clickY}
+	m = mustUpdate(t, m, click)
+	require.Equal(t, "nao-prod", m.current.Name)
+	require.Equal(t, focusSidebar, m.focus)
+}
+
+func TestSwitchToWritableContextReloads(t *testing.T) {
+	m := multiCtxModel(t)
+	m = mustUpdate(t, m, keyMsg("c"))
+	m.picker.selectIndex(1) // nao-prod (read-only)
+	updated, cmd := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.Equal(t, "nao-prod", m.current.Name)
+	require.False(t, m.current.Writable)
+	require.Equal(t, focusSidebar, m.focus)
+	require.NotNil(t, cmd) // recarga
+}
+
+func TestSwitchToNotImplementedShowsNotice(t *testing.T) {
+	m := multiCtxModel(t)
+	prev := m.current.Name
+	m = mustUpdate(t, m, keyMsg("c"))
+	// localizar acme-staging (gcp) por nombre
+	for i, c := range m.picker.contexts {
+		if c.Name == "acme-staging" {
+			m.picker.selectIndex(i)
+		}
+	}
+	m = mustUpdate(t, m, keyMsg("enter"))
+	require.Equal(t, prev, m.current.Name) // no cambió
+	require.NotEmpty(t, m.notice)
+}
+
+func TestSwitchDuringDeployStopsPollLoop(t *testing.T) {
+	m := multiCtxModel(t)
+	// simular un deploy activo: estado que deja el handler de enter tras iniciar el watch
+	m.deployActive = true
+	m.deployDone = false
+	m.deployService = "old-svc"
+	m.deployLastID = "ev-1"
+
+	// abrir picker y conmutar a otro contexto AWS distinto del actual (nao-dev)
+	m = mustUpdate(t, m, keyMsg("c"))
+	require.Equal(t, focusContextPicker, m.focus)
+	for i, c := range m.picker.contexts {
+		if c.Cloud == "aws" && c.Name != m.current.Name {
+			m.picker.selectIndex(i)
+			break
+		}
+	}
+	updated, _ := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+
+	// el estado de watch debe estar completamente limpio tras el switch
+	require.False(t, m.deployActive, "deployActive debe ser false tras el switch")
+	require.Empty(t, m.deployService, "deployService debe vaciarse tras el switch")
+	require.Empty(t, m.deployLastID, "deployLastID debe vaciarse tras el switch")
+
+	// un tick de poll no debe reprogramar nada (loop huerfano eliminado)
+	_, cmd := m.Update(deployPollTickMsg{})
+	require.Nil(t, cmd, "deployPollTickMsg no debe devolver cmd cuando deployActive es false")
+}
+
 func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 	fake := &coretest.FakeDeployer{
 		Services:        sampleServices(),
 		DeploymentValue: core.Deployment{Rollout: "COMPLETED", Running: 2, Desired: 2},
 	}
-	m := New(fake, "stg-cluster", "stg", true, "")
+	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
+	m := New(factory, []config.Context{cur}, cur)
 	m.sidebar.setServices(fake.Services)
 	m, _ = applySize(m, 120, 40)
 

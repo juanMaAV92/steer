@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// minimalToml is a valid steer.toml with a dev environment used by non-config tests.
-const minimalToml = "[providers.aws.environments.dev]\nprofile=\"dev\"\nwritable=true\n"
+// minimalToml es un steer.toml válido con un contexto dev usado por los tests que no son de config.
+const minimalToml = "[contexts.dev]\ncloud=\"aws\"\nprofile=\"dev\"\ncluster=\"dev-cluster\"\nwritable=true\n"
 
 func runRoot(t *testing.T, args ...string) (string, error) {
 	t.Helper()
@@ -44,17 +44,31 @@ func TestConfigInitCreatesFile(t *testing.T) {
 	require.FileExists(t, filepath.Join(dir, "steer.toml"))
 }
 
+func TestConfigInitContainsContexts(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	_, err := runRoot(t, "config", "init")
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(filepath.Join(dir, "steer.toml"))
+	require.NoError(t, err)
+	require.Contains(t, string(content), "[contexts.")
+	require.Contains(t, string(content), "default_context")
+}
+
 func TestConfigValidateOK(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "steer.toml"),
-		[]byte("[providers.aws.environments.dev]\nprofile=\"dev\"\nwritable=true\n"), 0o600))
+		[]byte("[contexts.dev]\ncloud=\"aws\"\nprofile=\"dev\"\ncluster=\"dev-cluster\"\nwritable=true\n"), 0o600))
 
-	_, err := runRoot(t, "config", "validate")
+	out, err := runRoot(t, "config", "validate")
 	require.NoError(t, err)
+	require.Contains(t, out, "1 contexts")
 }
 
-func TestConfigValidateFailsWithoutEnvironments(t *testing.T) {
+func TestConfigValidateFailsWithoutContexts(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "steer.toml"), []byte("\n"), 0o600))

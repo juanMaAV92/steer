@@ -3,13 +3,16 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/core"
+	"github.com/juanMaAV92/steer/internal/providers"
 	"github.com/juanMaAV92/steer/internal/render"
 	"github.com/juanMaAV92/steer/internal/tui/panel"
 )
@@ -20,6 +23,7 @@ const (
 	focusSidebar focus = iota
 	focusPanel
 	focusAction
+	focusContextPicker
 )
 
 // Constantes de geometría para el routing de mouse.
@@ -42,17 +46,18 @@ const (
 
 // Model es el estado raíz de la TUI (patrón Elm de Bubble Tea).
 type Model struct {
+	factory  providers.DeployerFactory
+	contexts []config.Context
+	current  config.Context
 	dep      core.Deployer
-	cluster  string
-	env      string
-	writable bool
-	prefix   string // prefijo de entorno a ocultar en la visualización
+	depErr   error
 	keys     keyMap
 
 	sidebar sidebar
 	tabs    panel.Tabs
 	events  panel.Events
 	action  action
+	picker  contextPicker
 
 	focus   focus
 	loading bool
@@ -68,21 +73,31 @@ type Model struct {
 	deployService            string
 }
 
-func New(dep core.Deployer, cluster, env string, writable bool, prefix string) Model {
-	sb := newSidebar()
-	sb.prefix = prefix
-	return Model{
-		dep: dep, cluster: cluster, env: env, writable: writable, prefix: prefix,
-		keys: defaultKeys(), sidebar: sb, events: panel.NewEvents(),
-		loading: true,
+func New(factory providers.DeployerFactory, contexts []config.Context, current config.Context) Model {
+	dep, err := factory(current)
+	m := Model{
+		factory: factory, contexts: contexts, current: current,
+		dep: dep, depErr: err,
+		keys: defaultKeys(), sidebar: newSidebar(), events: panel.NewEvents(),
+		loading: err == nil,
 	}
+	m.sidebar.prefix = current.Prefix()
+	if err != nil {
+		m.err = err
+	}
+	return m
 }
 
-func (m Model) Init() tea.Cmd { return tea.Batch(m.loadServicesCmd(), tickCmd()) }
+func (m Model) Init() tea.Cmd {
+	if m.depErr != nil {
+		return nil
+	}
+	return tea.Batch(m.loadServicesCmd(), tickCmd())
+}
 
 func (m Model) loadServicesCmd() tea.Cmd {
 	return func() tea.Msg {
-		s, err := m.dep.ListServices(context.Background(), m.cluster)
+		s, err := m.dep.ListServices(context.Background(), m.current.Cluster)
 		return servicesMsg{services: s, err: err}
 	}
 }
@@ -156,7 +171,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.loadServicesCmd()
 		}
 		m.deployLastID = msg.lastID
-		return m, deployPollCmd(m.dep, m.cluster, m.deployService, m.deployLastID)
+		return m, deployPollCmd(m.dep, m.current.Cluster, m.deployService, m.deployLastID)
 
 	case deployPollMsg:
 		if msg.err != nil {
@@ -189,7 +204,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case deployPollTickMsg:
 		if m.deployActive && !m.deployDone {
-			return m, deployPollCmd(m.dep, m.cluster, m.deployService, m.deployLastID)
+			return m, deployPollCmd(m.dep, m.current.Cluster, m.deployService, m.deployLastID)
 		}
 		return m, nil
 
@@ -197,7 +212,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 
 	case tea.MouseMsg:
+		// mientras el picker está abierto, el overlay captura el mouse (click-to-select)
+		if m.focus == focusContextPicker {
+			return m.handlePickerMouse(msg)
+		}
 		return m, m.handleMouse(msg)
+	}
+	return m, nil
+}
+
+// handlePickerMouse maneja el mouse mientras el selector de contexto está abierto:
+// un click izquierdo sobre una fila la conmuta; cualquier otro evento se traga
+// (no cierra el overlay ni muta el estado por debajo).
+func (m Model) handlePickerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+		// el picker se renderiza tras la barra superior: línea de picker = Y - topBarHeight
+		if idx, ok := m.picker.indexAtLine(msg.Y - topBarHeight); ok {
+			m.picker.selectIndex(idx)
+			return m.applyContextSwitch()
+		}
 	}
 	return m, nil
 }
@@ -214,6 +247,13 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	}
 	// solo procesar clicks izquierdos
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
+		return nil
+	}
+	// click en la barra superior (contexto) → abrir el selector de contexto
+	if msg.Y < topBarHeight {
+		m.picker = newContextPicker(m.contexts, m.current.Name)
+		m.notice = ""
+		m.focus = focusContextPicker
 		return nil
 	}
 	// click en la zona del sidebar
@@ -242,6 +282,24 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// foco en overlay del selector de contexto: captura el input antes del switch global
+	if m.focus == focusContextPicker {
+		switch {
+		case msg.Type == tea.KeyCtrlC:
+			return m, tea.Quit
+		case key.Matches(msg, m.keys.Esc):
+			m.focus = focusSidebar
+			return m, nil
+		case key.Matches(msg, m.keys.Enter):
+			return m.applyContextSwitch()
+		case key.Matches(msg, m.keys.Down):
+			m.picker.moveDown()
+		case key.Matches(msg, m.keys.Up):
+			m.picker.moveUp()
+		}
+		return m, nil
+	}
+
 	// foco en overlay de acción: captura el input
 	if m.focus == focusAction {
 		switch {
@@ -264,7 +322,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.events.Reset()
 				m.deployActive, m.deployDone = true, false
 				m.deployService = svc
-				return m, startDeployCmd(m.dep, m.cluster, svc, tag)
+				return m, startDeployCmd(m.dep, m.current.Cluster, svc, tag)
 			}
 			return m, m.runActionCmd()
 		default:
@@ -288,6 +346,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		m.notice = ""
 		return m, m.loadServicesCmd()
+	case msg.String() == "c":
+		// abre el overlay de selección de contexto
+		m.picker = newContextPicker(m.contexts, m.current.Name)
+		m.notice = ""
+		m.focus = focusContextPicker
+		return m, nil
 	case key.Matches(msg, m.keys.Deploy), key.Matches(msg, m.keys.Scale), key.Matches(msg, m.keys.Rollback):
 		return m.openAction(msg)
 	}
@@ -319,8 +383,50 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// applyContextSwitch conmuta al contexto seleccionado en el picker.
+// Si el provider no está implementado o la fábrica falla, muestra un notice y no cambia.
+func (m Model) applyContextSwitch() (tea.Model, tea.Cmd) {
+	sel, ok := m.picker.selected()
+	if !ok {
+		m.focus = focusSidebar
+		return m, nil
+	}
+	if sel.Name == m.current.Name {
+		m.focus = focusSidebar
+		return m, nil
+	}
+	dep, err := m.factory(sel)
+	if err != nil {
+		if errors.Is(err, providers.ErrProviderNotImplemented) {
+			m.notice = "provider " + strconv.Quote(sel.Cloud) + " not implemented yet"
+		} else {
+			m.notice = "switch failed: " + err.Error()
+		}
+		m.focus = focusSidebar
+		return m, nil // conserva el contexto previo
+	}
+	m.dep = dep
+	m.current = sel
+	m.sidebar = newSidebar()
+	m.sidebar.prefix = sel.Prefix()
+	m.sidebar.width = m.sidebarW
+	m.loading = true
+	m.notice = ""
+	m.status = ""
+	m.focus = focusSidebar
+	// reiniciar el estado de watch de deploy para evitar que el loop de poll
+	// siga disparándose contra el nuevo deployer con el servicio anterior
+	m.deployActive = false
+	m.deployDone = false
+	m.deployService = ""
+	m.deployLastID = ""
+	m.events.Reset()
+	m.tabs.Active = panel.TabDetails
+	return m, m.loadServicesCmd()
+}
+
 func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if !m.writable {
+	if !m.current.Writable {
 		m.notice = "read-only environment (writable=false) — action blocked"
 		return m, nil
 	}
@@ -343,7 +449,7 @@ func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) runActionCmd() tea.Cmd {
 	a := m.action
-	dep, cluster := m.dep, m.cluster
+	dep, cluster := m.dep, m.current.Cluster
 	m.action.close()
 	m.focus = focusSidebar
 	return func() tea.Msg {
@@ -371,7 +477,12 @@ func (m Model) View() string {
 	if m.err != nil {
 		return render.Danger("error: "+m.err.Error()) + "\n" + render.Dim("press q to quit")
 	}
-	top := topBar("aws", m.env, m.cluster, m.writable)
+	top := topBar(m.current.Cloud, m.current.Name, m.current.Cluster, m.current.Writable)
+
+	// overlay del selector de contexto: reemplaza el cuerpo principal
+	if m.focus == focusContextPicker {
+		return top + "\n" + m.picker.view() + "\n" + bottomBar(m.keys.shortHelp(), m.notice, m.status)
+	}
 
 	sideStyle := blurredBorder()
 	panelStyle := blurredBorder()
@@ -411,8 +522,8 @@ func (m Model) panelBody() string {
 	case panel.TabLogs:
 		return panel.LogsView()
 	default:
-		displayName := strings.TrimPrefix(s.Name, m.prefix)
-		return panel.DetailsView(s, m.writable, displayName)
+		displayName := strings.TrimPrefix(s.Name, m.current.Prefix())
+		return panel.DetailsView(s, m.current.Writable, displayName)
 	}
 }
 
