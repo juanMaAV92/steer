@@ -506,7 +506,7 @@ func (m Model) View() string {
 
 	bottom := bottomBar(m.keys.shortHelp(), m.notice, m.status)
 	if m.focus == focusAction {
-		bottom = m.action.view()
+		bottom = m.action.modalView(m.width, m.bodyH)
 	}
 	return top + "\n" + body + "\n" + bottom
 }

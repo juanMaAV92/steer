@@ -3,6 +3,7 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/juanMaAV92/steer/internal/render"
 )
 
@@ -43,17 +44,29 @@ func (a action) ready() bool {
 	return a.kind == actionRollback || a.input != ""
 }
 
-func (a action) view() string {
+// modalView renderiza el diálogo de acción como una caja centrada en un área width×height.
+func (a action) modalView(width, height int) string {
+	var title, body, confirm string
 	switch a.kind {
-	case actionRollback:
-		return "Roll back " + render.Bold(a.service) + " to previous revision?\n" +
-			render.Dim("enter to confirm · esc to cancel")
 	case actionDeploy:
-		return "Deploy " + render.Bold(a.service) + " — image tag: " + render.Accent(a.input) + "\n" +
-			render.Dim("type the tag · enter to deploy · esc to cancel")
+		title = "Deploy " + a.service
+		body = "image tag:  " + render.Accent(a.input) + "_"
+		confirm = "Deploy (↵)"
 	case actionScale:
-		return "Scale " + render.Bold(a.service) + " — desired count: " + render.Accent(a.input) + "\n" +
-			render.Dim("type a number · enter to scale · esc to cancel")
+		title = "Scale " + a.service
+		body = "desired count:  " + render.Accent(a.input) + "_"
+		confirm = "Scale (↵)"
+	case actionRollback:
+		title = "Roll back " + a.service + "?"
+		body = render.Dim("This reverts to the previous revision.")
+		confirm = "Confirm (↵)"
 	}
-	return ""
+	inner := render.Bold(title) + "\n\n" + body + "\n\n" +
+		render.Buttons([]string{confirm, "Cancel (esc)"})
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(render.BrandColor)).
+		Padding(1, 2).
+		Render(inner)
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
 }
