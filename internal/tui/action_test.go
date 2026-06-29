@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -35,4 +36,24 @@ func TestActionCloseDeactivates(t *testing.T) {
 	a.open(actionScale, "api")
 	a.close()
 	require.False(t, a.active)
+}
+
+func TestActionModalDeploy(t *testing.T) {
+	var a action
+	a.open(actionDeploy, "api")
+	a.typeKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v2")})
+	out := a.modalView(80, 24)
+	require.Contains(t, out, "Deploy")
+	require.Contains(t, out, "api")
+	require.Contains(t, out, "v2")
+	require.Contains(t, out, "Cancel (esc)")
+}
+
+func TestActionModalRollback(t *testing.T) {
+	var a action
+	a.open(actionRollback, "api")
+	out := a.modalView(80, 24)
+	require.Contains(t, strings.ToLower(out), "roll back")
+	require.Contains(t, out, "Confirm (↵)")
+	require.Contains(t, out, "Cancel (esc)")
 }

@@ -8,6 +8,10 @@ import (
 	"github.com/juanMaAV92/steer/internal/render"
 )
 
+// DetailsActionLabels son las etiquetas de los botones de acción del panel Details.
+// Fuente única: las usa DetailsView para renderizar y app.go para el hit-testing del click.
+var DetailsActionLabels = []string{"Deploy (d)", "Scale (s)", "Rollback (R)"}
+
 // DetailsView renderiza la pestaña Details con stats y la fila de acciones.
 // displayName es el nombre de visualización (sin prefijo de entorno).
 func DetailsView(s core.ServiceStatus, writable bool, displayName string) string {
@@ -26,9 +30,7 @@ func DetailsView(s core.ServiceStatus, writable bool, displayName string) string
 	}
 	b.WriteString("tag       " + render.Accent(tag) + "\n\n")
 	if writable {
-		b.WriteString(render.Accent("[d]") + render.Dim(" deploy  ") +
-			render.Accent("[s]") + render.Dim(" scale  ") +
-			render.Accent("[R]") + render.Dim(" rollback"))
+		b.WriteString(render.Buttons(DetailsActionLabels))
 	} else {
 		b.WriteString(render.Warn("read-only environment — actions disabled"))
 	}
