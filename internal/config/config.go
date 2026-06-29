@@ -5,7 +5,9 @@ import "github.com/BurntSushi/toml"
 
 // Config es la raíz de steer.toml.
 type Config struct {
-	Providers Providers `toml:"providers"`
+	DefaultContext string             `toml:"default_context"`
+	Contexts       map[string]Context `toml:"contexts"`
+	Providers      Providers          `toml:"providers"`
 }
 
 type Providers struct {
