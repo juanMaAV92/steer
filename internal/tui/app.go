@@ -3,6 +3,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -22,6 +23,7 @@ const (
 	focusSidebar focus = iota
 	focusPanel
 	focusAction
+	focusContextPicker
 )
 
 // Constantes de geometría para el routing de mouse.
@@ -55,6 +57,7 @@ type Model struct {
 	tabs    panel.Tabs
 	events  panel.Events
 	action  action
+	picker  contextPicker
 
 	focus   focus
 	loading bool
@@ -254,6 +257,24 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// foco en overlay del selector de contexto: captura el input antes del switch global
+	if m.focus == focusContextPicker {
+		switch {
+		case msg.Type == tea.KeyCtrlC:
+			return m, tea.Quit
+		case key.Matches(msg, m.keys.Esc):
+			m.focus = focusSidebar
+			return m, nil
+		case key.Matches(msg, m.keys.Enter):
+			return m.applyContextSwitch()
+		case key.Matches(msg, m.keys.Down):
+			m.picker.moveDown()
+		case key.Matches(msg, m.keys.Up):
+			m.picker.moveUp()
+		}
+		return m, nil
+	}
+
 	// foco en overlay de acción: captura el input
 	if m.focus == focusAction {
 		switch {
@@ -300,6 +321,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		m.notice = ""
 		return m, m.loadServicesCmd()
+	case msg.String() == "c":
+		// abre el overlay de selección de contexto
+		m.picker = newContextPicker(m.contexts, m.current.Name)
+		m.notice = ""
+		m.focus = focusContextPicker
+		return m, nil
 	case key.Matches(msg, m.keys.Deploy), key.Matches(msg, m.keys.Scale), key.Matches(msg, m.keys.Rollback):
 		return m.openAction(msg)
 	}
@@ -329,6 +356,40 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.sidebar.moveUp()
 	}
 	return m, nil
+}
+
+// applyContextSwitch conmuta al contexto seleccionado en el picker.
+// Si el provider no está implementado o la fábrica falla, muestra un notice y no cambia.
+func (m Model) applyContextSwitch() (tea.Model, tea.Cmd) {
+	sel, ok := m.picker.selected()
+	if !ok {
+		m.focus = focusSidebar
+		return m, nil
+	}
+	if sel.Name == m.current.Name {
+		m.focus = focusSidebar
+		return m, nil
+	}
+	dep, err := m.factory(sel)
+	if err != nil {
+		if errors.Is(err, providers.ErrProviderNotImplemented) {
+			m.notice = "provider " + strconv.Quote(sel.Cloud) + " not implemented yet"
+		} else {
+			m.notice = "switch failed: " + err.Error()
+		}
+		m.focus = focusSidebar
+		return m, nil // conserva el contexto previo
+	}
+	m.dep = dep
+	m.current = sel
+	m.sidebar = newSidebar()
+	m.sidebar.prefix = sel.Prefix()
+	m.sidebar.width = m.sidebarW
+	m.loading = true
+	m.notice = ""
+	m.status = ""
+	m.focus = focusSidebar
+	return m, m.loadServicesCmd()
 }
 
 func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -384,6 +445,11 @@ func (m Model) View() string {
 		return render.Danger("error: "+m.err.Error()) + "\n" + render.Dim("press q to quit")
 	}
 	top := topBar(m.current.Cloud, m.current.Name, m.current.Cluster, m.current.Writable)
+
+	// overlay del selector de contexto: reemplaza el cuerpo principal
+	if m.focus == focusContextPicker {
+		return top + "\n" + m.picker.view() + "\n" + bottomBar(m.keys.shortHelp(), m.notice, m.status)
+	}
 
 	sideStyle := blurredBorder()
 	panelStyle := blurredBorder()

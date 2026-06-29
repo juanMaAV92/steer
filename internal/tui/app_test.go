@@ -8,6 +8,7 @@ import (
 	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/juanMaAV92/steer/internal/core/coretest"
+	"github.com/juanMaAV92/steer/internal/providers"
 	"github.com/juanMaAV92/steer/internal/tui/panel"
 	"github.com/stretchr/testify/require"
 )
@@ -132,6 +133,59 @@ func TestMouseWheelScrollsPanelWhenFocused(t *testing.T) {
 	// no debe panic ni cambiar de servicio
 	m = mustUpdate(t, m, wheel)
 	require.Equal(t, focusPanel, m.focus)
+}
+
+func multiCtxModel(t *testing.T) Model {
+	t.Helper()
+	fake := &coretest.FakeDeployer{Services: sampleServices()}
+	factory := func(c config.Context) (core.Deployer, error) {
+		if c.Cloud != "aws" {
+			return nil, providers.ErrProviderNotImplemented
+		}
+		return fake, nil
+	}
+	ctxs := []config.Context{
+		{Name: "nao-dev", Cloud: "aws", Cluster: "c1", Writable: true},
+		{Name: "nao-prod", Cloud: "aws", Cluster: "c2", Writable: false},
+		{Name: "acme-staging", Cloud: "gcp", Cluster: "c3", Writable: true},
+	}
+	m := New(factory, ctxs, ctxs[0])
+	m.sidebar.setServices(sampleServices())
+	m, _ = applySize(m, 120, 40)
+	return m
+}
+
+func TestOpenContextPicker(t *testing.T) {
+	m := multiCtxModel(t)
+	m = mustUpdate(t, m, keyMsg("c"))
+	require.Equal(t, focusContextPicker, m.focus)
+}
+
+func TestSwitchToWritableContextReloads(t *testing.T) {
+	m := multiCtxModel(t)
+	m = mustUpdate(t, m, keyMsg("c"))
+	m.picker.selectIndex(1) // nao-prod (read-only)
+	updated, cmd := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.Equal(t, "nao-prod", m.current.Name)
+	require.False(t, m.current.Writable)
+	require.Equal(t, focusSidebar, m.focus)
+	require.NotNil(t, cmd) // recarga
+}
+
+func TestSwitchToNotImplementedShowsNotice(t *testing.T) {
+	m := multiCtxModel(t)
+	prev := m.current.Name
+	m = mustUpdate(t, m, keyMsg("c"))
+	// localizar acme-staging (gcp) por nombre
+	for i, c := range m.picker.contexts {
+		if c.Name == "acme-staging" {
+			m.picker.selectIndex(i)
+		}
+	}
+	m = mustUpdate(t, m, keyMsg("enter"))
+	require.Equal(t, prev, m.current.Name) // no cambió
+	require.NotEmpty(t, m.notice)
 }
 
 func TestDeployFlowFeedsEventsPanel(t *testing.T) {
