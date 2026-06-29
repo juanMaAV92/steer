@@ -17,8 +17,8 @@ func NewTuiCmd() *cobra.Command {
 				return err
 			}
 			// prefijo del servicio para ocultar en la visualización (ej. "nao-v2-dev-")
-			prefix := app.Config.Providers.AWS.Naming.Service(app.EnvName, "")
-			return tui.Run(dep, cluster, app.EnvName, app.Env.Writable, prefix)
+			prefix := app.Ctx.Prefix()
+			return tui.Run(dep, cluster, app.Ctx.Name, app.Ctx.Writable, prefix)
 		},
 	}
 }

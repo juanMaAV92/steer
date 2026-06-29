@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/juanMaAV92/steer/internal/config"
+	"github.com/juanMaAV92/steer/internal/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +20,7 @@ func FromContext(ctx context.Context) *AppContext {
 
 // NewRootCmd construye el comando raíz `steer`.
 func NewRootCmd(version string) *cobra.Command {
-	var envName string
+	var contextName string
 
 	root := &cobra.Command{
 		Use:           "steer",
@@ -28,12 +29,14 @@ func NewRootCmd(version string) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.PersistentFlags().StringVarP(&envName, "env", "e", "dev", "target environment")
+	root.PersistentFlags().StringVar(&contextName, "context", "", "target context (default: default_context)")
+	root.PersistentFlags().StringVar(&contextName, "env", "", "alias of --context")
 
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
+		factory := providers.NewDeployerFactory()
 		// Los comandos `config` no requieren un steer.toml ya cargado.
 		if cmd.Parent() != nil && cmd.Parent().Name() == "config" {
-			cmd.SetContext(context.WithValue(cmd.Context(), ctxKey{}, &AppContext{EnvName: envName}))
+			cmd.SetContext(context.WithValue(cmd.Context(), ctxKey{}, &AppContext{Factory: factory}))
 			return nil
 		}
 		path, err := config.Find()
@@ -44,11 +47,14 @@ func NewRootCmd(version string) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		env, err := cfg.Env(envName)
+		cur, err := cfg.ResolveContext(contextName)
 		if err != nil {
 			return err
 		}
-		app := &AppContext{EnvName: envName, Env: env, Config: cfg}
+		if err := cur.Validate(); err != nil {
+			return err
+		}
+		app := &AppContext{Ctx: cur, Config: cfg, Factory: factory}
 		cmd.SetContext(context.WithValue(cmd.Context(), ctxKey{}, app))
 		return nil
 	}

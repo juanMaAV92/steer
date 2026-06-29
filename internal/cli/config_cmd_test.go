@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// minimalToml is a valid steer.toml with a dev environment used by non-config tests.
-const minimalToml = "[providers.aws.environments.dev]\nprofile=\"dev\"\nwritable=true\n"
+// minimalToml es un steer.toml válido con un contexto dev usado por los tests que no son de config.
+const minimalToml = "[contexts.dev]\ncloud=\"aws\"\nprofile=\"dev\"\ncluster=\"dev-cluster\"\nwritable=true\n"
 
 func runRoot(t *testing.T, args ...string) (string, error) {
 	t.Helper()

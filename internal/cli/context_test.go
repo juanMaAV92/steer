@@ -3,19 +3,16 @@ package cli
 import (
 	"testing"
 
+	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
 func TestIsProduction(t *testing.T) {
-	require.True(t, (&AppContext{EnvName: "prod"}).IsProduction())
-	require.False(t, (&AppContext{EnvName: "stg"}).IsProduction())
+	require.True(t, (&AppContext{Ctx: config.Context{Name: "prod", Writable: false}}).IsProduction())
+	require.False(t, (&AppContext{Ctx: config.Context{Name: "stg", Writable: true}}).IsProduction())
 }
 
-func TestRequireWritableBlocksReadOnly(t *testing.T) {
-	ro := &AppContext{EnvName: "prod"} // Env.Writable == false por defecto
-	require.Error(t, ro.RequireWritable())
-
-	rw := &AppContext{EnvName: "stg"}
-	rw.Env.Writable = true
-	require.NoError(t, rw.RequireWritable())
+func TestRequireWritable(t *testing.T) {
+	require.NoError(t, (&AppContext{Ctx: config.Context{Writable: true}}).RequireWritable())
+	require.Error(t, (&AppContext{Ctx: config.Context{Name: "prod", Writable: false}}).RequireWritable())
 }
