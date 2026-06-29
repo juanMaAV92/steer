@@ -12,13 +12,7 @@ func NewTuiCmd() *cobra.Command {
 		Short: "Open the interactive dashboard",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			app := FromContext(cmd.Context())
-			dep, cluster, err := newDeployerFn(app)
-			if err != nil {
-				return err
-			}
-			// prefijo del servicio para ocultar en la visualización (ej. "nao-v2-dev-")
-			prefix := app.Ctx.Prefix()
-			return tui.Run(dep, cluster, app.Ctx.Name, app.Ctx.Writable, prefix)
+			return tui.Run(app.Factory, app.Config.AllContexts(), app.Ctx)
 		},
 	}
 }

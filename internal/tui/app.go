@@ -9,7 +9,9 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/core"
+	"github.com/juanMaAV92/steer/internal/providers"
 	"github.com/juanMaAV92/steer/internal/render"
 	"github.com/juanMaAV92/steer/internal/tui/panel"
 )
@@ -42,11 +44,11 @@ const (
 
 // Model es el estado raíz de la TUI (patrón Elm de Bubble Tea).
 type Model struct {
+	factory  providers.DeployerFactory
+	contexts []config.Context
+	current  config.Context
 	dep      core.Deployer
-	cluster  string
-	env      string
-	writable bool
-	prefix   string // prefijo de entorno a ocultar en la visualización
+	depErr   error
 	keys     keyMap
 
 	sidebar sidebar
@@ -68,21 +70,31 @@ type Model struct {
 	deployService            string
 }
 
-func New(dep core.Deployer, cluster, env string, writable bool, prefix string) Model {
-	sb := newSidebar()
-	sb.prefix = prefix
-	return Model{
-		dep: dep, cluster: cluster, env: env, writable: writable, prefix: prefix,
-		keys: defaultKeys(), sidebar: sb, events: panel.NewEvents(),
-		loading: true,
+func New(factory providers.DeployerFactory, contexts []config.Context, current config.Context) Model {
+	dep, err := factory(current)
+	m := Model{
+		factory: factory, contexts: contexts, current: current,
+		dep: dep, depErr: err,
+		keys: defaultKeys(), sidebar: newSidebar(), events: panel.NewEvents(),
+		loading: err == nil,
 	}
+	m.sidebar.prefix = current.Prefix()
+	if err != nil {
+		m.err = err
+	}
+	return m
 }
 
-func (m Model) Init() tea.Cmd { return tea.Batch(m.loadServicesCmd(), tickCmd()) }
+func (m Model) Init() tea.Cmd {
+	if m.depErr != nil {
+		return nil
+	}
+	return tea.Batch(m.loadServicesCmd(), tickCmd())
+}
 
 func (m Model) loadServicesCmd() tea.Cmd {
 	return func() tea.Msg {
-		s, err := m.dep.ListServices(context.Background(), m.cluster)
+		s, err := m.dep.ListServices(context.Background(), m.current.Cluster)
 		return servicesMsg{services: s, err: err}
 	}
 }
@@ -156,7 +168,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.loadServicesCmd()
 		}
 		m.deployLastID = msg.lastID
-		return m, deployPollCmd(m.dep, m.cluster, m.deployService, m.deployLastID)
+		return m, deployPollCmd(m.dep, m.current.Cluster, m.deployService, m.deployLastID)
 
 	case deployPollMsg:
 		if msg.err != nil {
@@ -189,7 +201,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case deployPollTickMsg:
 		if m.deployActive && !m.deployDone {
-			return m, deployPollCmd(m.dep, m.cluster, m.deployService, m.deployLastID)
+			return m, deployPollCmd(m.dep, m.current.Cluster, m.deployService, m.deployLastID)
 		}
 		return m, nil
 
@@ -264,7 +276,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.events.Reset()
 				m.deployActive, m.deployDone = true, false
 				m.deployService = svc
-				return m, startDeployCmd(m.dep, m.cluster, svc, tag)
+				return m, startDeployCmd(m.dep, m.current.Cluster, svc, tag)
 			}
 			return m, m.runActionCmd()
 		default:
@@ -320,7 +332,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if !m.writable {
+	if !m.current.Writable {
 		m.notice = "read-only environment (writable=false) — action blocked"
 		return m, nil
 	}
@@ -343,7 +355,7 @@ func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) runActionCmd() tea.Cmd {
 	a := m.action
-	dep, cluster := m.dep, m.cluster
+	dep, cluster := m.dep, m.current.Cluster
 	m.action.close()
 	m.focus = focusSidebar
 	return func() tea.Msg {
@@ -371,7 +383,7 @@ func (m Model) View() string {
 	if m.err != nil {
 		return render.Danger("error: "+m.err.Error()) + "\n" + render.Dim("press q to quit")
 	}
-	top := topBar("aws", m.env, m.cluster, m.writable)
+	top := topBar(m.current.Cloud, m.current.Name, m.current.Cluster, m.current.Writable)
 
 	sideStyle := blurredBorder()
 	panelStyle := blurredBorder()
@@ -411,8 +423,8 @@ func (m Model) panelBody() string {
 	case panel.TabLogs:
 		return panel.LogsView()
 	default:
-		displayName := strings.TrimPrefix(s.Name, m.prefix)
-		return panel.DetailsView(s, m.writable, displayName)
+		displayName := strings.TrimPrefix(s.Name, m.current.Prefix())
+		return panel.DetailsView(s, m.current.Writable, displayName)
 	}
 }
 

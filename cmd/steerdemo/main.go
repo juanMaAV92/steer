@@ -7,8 +7,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/juanMaAV92/steer/internal/core/coretest"
+	"github.com/juanMaAV92/steer/internal/providers"
 	"github.com/juanMaAV92/steer/internal/tui"
 )
 
@@ -28,7 +30,9 @@ func main() {
 			{ID: "1", At: now.Add(-60 * time.Second), Message: "(service nao-v2-demo-api) has started 2 tasks."},
 		},
 	}
-	if err := tui.Run(fake, "demo-cluster", "demo", true, "nao-v2-demo-"); err != nil {
+	cur := config.Context{Name: "demo", Cloud: "aws", Cluster: "demo-cluster", Writable: true}
+	factory := providers.DeployerFactory(func(_ config.Context) (core.Deployer, error) { return fake, nil })
+	if err := tui.Run(factory, []config.Context{cur}, cur); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}

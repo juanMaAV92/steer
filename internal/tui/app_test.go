@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/juanMaAV92/steer/internal/core/coretest"
 	"github.com/juanMaAV92/steer/internal/tui/panel"
@@ -12,7 +13,10 @@ import (
 )
 
 func newTestModel(services []core.ServiceStatus) Model {
-	m := New(&coretest.FakeDeployer{Services: services}, "stg-cluster", "stg", true, "")
+	fake := &coretest.FakeDeployer{Services: services}
+	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
+	m := New(factory, []config.Context{cur}, cur)
 	m.sidebar.setServices(services)
 	m, _ = applySize(m, 120, 40)
 	return m
@@ -60,12 +64,15 @@ func TestQuitKeys(t *testing.T) {
 }
 
 func TestReadOnlyBlocksActions(t *testing.T) {
-	ro := New(&coretest.FakeDeployer{Services: sampleServices()}, "prod-cluster", "production", false, "")
+	fake := &coretest.FakeDeployer{Services: sampleServices()}
+	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	cur := config.Context{Name: "production", Cloud: "aws", Cluster: "prod-cluster", Writable: false}
+	ro := New(factory, []config.Context{cur}, cur)
 	ro.sidebar.setServices(sampleServices())
 	ro, _ = applySize(ro, 120, 40)
 	for _, key := range []string{"d", "s", "R"} {
 		m := mustUpdate(t, ro, keyMsg(key))
-		require.NotEqual(t, focusAction, m.focus, "key %q must not open action overlay in read-only", key)
+		require.NotEqual(t, focusAction, m.focus)
 		require.NotEmpty(t, m.notice)
 	}
 }
@@ -132,7 +139,9 @@ func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 		Services:        sampleServices(),
 		DeploymentValue: core.Deployment{Rollout: "COMPLETED", Running: 2, Desired: 2},
 	}
-	m := New(fake, "stg-cluster", "stg", true, "")
+	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
+	m := New(factory, []config.Context{cur}, cur)
 	m.sidebar.setServices(fake.Services)
 	m, _ = applySize(m, 120, 40)
 
