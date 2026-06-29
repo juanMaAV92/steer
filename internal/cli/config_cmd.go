@@ -8,17 +8,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const exampleConfig = `[providers.aws.environments.dev]
-profile  = "dev"
-writable = true
+const exampleConfig = `default_context = "dev"
 
-[providers.aws.environments.prod]
-profile  = "prod"
-writable = false
-
-[providers.aws.naming]
-cluster_template = "{env}-cluster"
+[contexts.dev]
+cloud            = "aws"
+profile          = "dev"
+cluster          = "dev-cluster"
 service_template = "{name}"
+writable         = true
+
+[contexts.prod]
+cloud            = "aws"
+profile          = "prod"
+cluster          = "prod-cluster"
+service_template = "{name}"
+writable         = false
 `
 
 // NewConfigCmd agrupa `steer config init|validate`.
@@ -58,11 +62,16 @@ func newConfigValidateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(cfg.Providers.AWS.Environments) == 0 {
-				return fmt.Errorf("config %s has no environments", path)
+			all := cfg.AllContexts()
+			if len(all) == 0 {
+				return fmt.Errorf("config %s has no contexts", path)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "ok: %s (%d environments)\n",
-				path, len(cfg.Providers.AWS.Environments))
+			for _, c := range all {
+				if err := c.Validate(); err != nil {
+					return err
+				}
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "ok: %s (%d contexts)\n", path, len(all))
 			return nil
 		},
 	}
