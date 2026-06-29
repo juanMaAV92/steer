@@ -171,7 +171,7 @@ func newServiceDeployCmd() *cobra.Command {
 			}
 			fmt.Fprintf(out, "%s %s %s %s\n%s\n",
 				render.Success("✓ deployed"), render.Bold(service), render.Dim("->"), render.Accent(tag),
-				render.Dim(fmt.Sprintf("rollback with: steer -c %s service rollback -s %s", app.Ctx.Name, service)))
+				render.Dim(fmt.Sprintf("rollback with: steer --context %s service rollback -s %s", app.Ctx.Name, service)))
 
 			if watch {
 				return watchRollout(cmd.Context(), out, dep, cluster, realName, interval)
