@@ -220,6 +220,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleMouse enruta los eventos de mouse a la zona correcta:
 // rueda → scroll del panel de eventos, click izquierdo → selección en sidebar o pestaña en panel.
 func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
+	// mientras el overlay del picker esté abierto, capturar todos los eventos de mouse
+	// para evitar que caigan al sidebar/panel y muten el estado por debajo
+	if m.focus == focusContextPicker {
+		return nil
+	}
 	// rueda: scroll en el panel de eventos si el cursor está sobre el panel
 	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
 		if msg.X > m.sidebarW {
@@ -389,6 +394,14 @@ func (m Model) applyContextSwitch() (tea.Model, tea.Cmd) {
 	m.notice = ""
 	m.status = ""
 	m.focus = focusSidebar
+	// reiniciar el estado de watch de deploy para evitar que el loop de poll
+	// siga disparándose contra el nuevo deployer con el servicio anterior
+	m.deployActive = false
+	m.deployDone = false
+	m.deployService = ""
+	m.deployLastID = ""
+	m.events.Reset()
+	m.tabs.Active = panel.TabDetails
 	return m, m.loadServicesCmd()
 }
 

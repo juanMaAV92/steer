@@ -89,6 +89,6 @@ func (p contextPicker) view() string {
 		}
 		b.WriteString(cursor + name + "  " + state + extra + "\n")
 	}
-	b.WriteString(render.Dim("\n↑↓/click select · enter switch · esc cancel"))
+	b.WriteString(render.Dim("\n↑↓ select · enter switch · esc cancel"))
 	return b.String()
 }
