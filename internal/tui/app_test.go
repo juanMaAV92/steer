@@ -161,6 +161,14 @@ func TestOpenContextPicker(t *testing.T) {
 	require.Equal(t, focusContextPicker, m.focus)
 }
 
+// Un click izquierdo en la barra superior (Y=0) abre el selector de contexto.
+func TestClickTopBarOpensContextPicker(t *testing.T) {
+	m := multiCtxModel(t)
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: 0}
+	m = mustUpdate(t, m, click)
+	require.Equal(t, focusContextPicker, m.focus)
+}
+
 func TestSwitchToWritableContextReloads(t *testing.T) {
 	m := multiCtxModel(t)
 	m = mustUpdate(t, m, keyMsg("c"))

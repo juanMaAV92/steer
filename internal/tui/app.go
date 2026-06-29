@@ -236,6 +236,13 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
 		return nil
 	}
+	// click en la barra superior (contexto) → abrir el selector de contexto
+	if msg.Y < topBarHeight {
+		m.picker = newContextPicker(m.contexts, m.current.Name)
+		m.notice = ""
+		m.focus = focusContextPicker
+		return nil
+	}
 	// click en la zona del sidebar
 	if msg.X <= m.sidebarW {
 		row := msg.Y - (topBarHeight + borderTop + sidebarHeader)
