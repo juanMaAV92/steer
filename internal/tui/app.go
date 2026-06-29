@@ -274,8 +274,10 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	// click en la fila de botones de acción del panel Details
+	// La geometría de botones solo es válida en modo dos columnas; en una columna Y=11 cae
+	// dentro del sidebar y provocaría un misfire que abre el modal de acción erróneamente.
 	const detailsButtonRowY = 11 // topBar(1)+borde(1)+tabs(1)+blanco(1)+details: name,blank,4 stats,blank,botones
-	if m.current.Writable && m.tabs.Active == panel.TabDetails && msg.Y == detailsButtonRowY {
+	if !m.singleColumn && m.current.Writable && m.tabs.Active == panel.TabDetails && msg.Y == detailsButtonRowY {
 		localX := msg.X - (m.sidebarW + 3)
 		if idx := render.ButtonAtColumn(panel.DetailsActionLabels, localX); idx >= 0 {
 			m.openActionKind(actionKindFor(idx))
@@ -524,6 +526,12 @@ func (m Model) View() string {
 		return top + "\n" + m.picker.view() + "\n" + bottomBar(m.keys.shortHelp(), m.notice, m.status)
 	}
 
+	// modal de acción: retorna antes de construir el layout (no renderizar para tirar)
+	if m.focus == focusAction {
+		return top + "\n" + m.action.modalView(m.width, m.bodyH) + "\n" +
+			bottomBar(m.keys.shortHelp(), m.notice, m.status)
+	}
+
 	sideStyle := blurredBorder()
 	panelStyle := blurredBorder()
 	if m.focus == focusSidebar {
@@ -542,12 +550,6 @@ func (m Model) View() string {
 		side := sideStyle.Width(m.sidebarW).Height(m.bodyH).Render(m.sidebar.view())
 		pan := panelStyle.Width(m.panelW).Height(m.bodyH).Render(panelBody)
 		body = lipgloss.JoinHorizontal(lipgloss.Top, side, pan)
-	}
-
-	// modal de acción: reemplaza el cuerpo con el overlay centrado
-	if m.focus == focusAction {
-		return top + "\n" + m.action.modalView(m.width, m.bodyH) + "\n" +
-			bottomBar(m.keys.shortHelp(), m.notice, m.status)
 	}
 	bottom := bottomBar(m.keys.shortHelp(), m.notice, m.status)
 	return top + "\n" + body + "\n" + bottom
