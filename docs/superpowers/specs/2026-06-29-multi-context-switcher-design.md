@@ -178,6 +178,10 @@ type DeployerFactory func(ctx config.Context) (core.Deployer, error)
 - Providers reales GCP (Cloud Run) y Azure (Container Apps) y su auth.
 - `group` por contexto para sub-agrupar dentro de un cloud en el picker.
 - Selector de contexto desde la paleta ⌘k (plan 06b).
+- **Click-to-select dentro del picker:** en v1 el picker se navega por teclado (`↑↓`/`enter`)
+  y el overlay traga los eventos de mouse (un click no lo cierra ni corrompe la selección
+  debajo). Mapear el click a una fila exige geometría consciente de los headers de cloud;
+  se difiere.
 
 ## Pruebas
 
