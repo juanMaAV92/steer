@@ -26,7 +26,7 @@ func NewDeployerFactory() DeployerFactory {
 			if err != nil {
 				return nil, err
 			}
-			return aws.NewDeployer(cfg), nil
+			return aws.NewDeployer(cfg, c.Cluster), nil
 		default:
 			return nil, fmt.Errorf("%w: %q", ErrProviderNotImplemented, c.Cloud)
 		}

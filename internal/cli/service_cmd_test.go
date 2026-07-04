@@ -13,8 +13,8 @@ import (
 func withFakeDeployer(t *testing.T, fake core.Deployer) {
 	t.Helper()
 	prev := newDeployerFn
-	newDeployerFn = func(_ *AppContext) (core.Deployer, string, error) {
-		return fake, "stg-cluster", nil
+	newDeployerFn = func(_ *AppContext) (core.Deployer, error) {
+		return fake, nil
 	}
 	t.Cleanup(func() { newDeployerFn = prev })
 }
@@ -50,7 +50,7 @@ func TestDeployNonInteractive(t *testing.T) {
 
 	out, err := runRoot(t, "service", "deploy", "-s", "catalog", "-t", "v2", "-y")
 	require.NoError(t, err)
-	require.Equal(t, []string{"stg-cluster/catalog/v2"}, fake.DeployCalls)
+	require.Equal(t, []string{"catalog/v2"}, fake.DeployCalls)
 	require.Contains(t, out, "v1")       // preview muestra tag actual
 	require.Contains(t, out, "v2")       // y el objetivo
 	require.Contains(t, out, "rollback") // sugiere rollback
@@ -96,7 +96,7 @@ func TestDeployWatchFollowsRollout(t *testing.T) {
 
 	out, err := runRoot(t, "service", "deploy", "-s", "catalog", "-t", "v2", "-y", "-w")
 	require.NoError(t, err)
-	require.Equal(t, []string{"stg-cluster/catalog/v2"}, fake.DeployCalls)
+	require.Equal(t, []string{"catalog/v2"}, fake.DeployCalls)
 	require.Contains(t, out, "Rollout")
 	require.Contains(t, out, "completed")
 }
@@ -106,7 +106,7 @@ func TestScaleCommand(t *testing.T) {
 	withFakeDeployer(t, fake)
 	_, err := runRoot(t, "service", "scale", "-s", "catalog", "-c", "4", "-y")
 	require.NoError(t, err)
-	require.Equal(t, []string{"stg-cluster/catalog/4"}, fake.ScaleCalls)
+	require.Equal(t, []string{"catalog/4"}, fake.ScaleCalls)
 }
 
 func TestRollbackCommand(t *testing.T) {
@@ -114,5 +114,5 @@ func TestRollbackCommand(t *testing.T) {
 	withFakeDeployer(t, fake)
 	_, err := runRoot(t, "service", "rollback", "-s", "catalog", "-y")
 	require.NoError(t, err)
-	require.Equal(t, []string{"stg-cluster/catalog"}, fake.RollbackCalls)
+	require.Equal(t, []string{"catalog"}, fake.RollbackCalls)
 }

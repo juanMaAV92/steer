@@ -321,7 +321,7 @@ func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 
 	started := cmd().(deployStartedMsg)
 	require.NoError(t, started.err)
-	require.Equal(t, []string{"stg-cluster/api/v2"}, fake.DeployCalls)
+	require.Equal(t, []string{"api/v2"}, fake.DeployCalls)
 
 	updated, cmd = m.Update(started)
 	m = updated.(Model)

@@ -24,25 +24,26 @@ type ecsAPI interface {
 
 // ECSDeployer implementa core.Deployer sobre AWS ECS.
 type ECSDeployer struct {
-	api ecsAPI
+	api     ecsAPI
+	cluster string
 }
 
 // NewDeployer crea un ECSDeployer desde una aws.Config.
-func NewDeployer(cfg awssdk.Config) *ECSDeployer {
-	return &ECSDeployer{api: ecs.NewFromConfig(cfg)}
+func NewDeployer(cfg awssdk.Config, cluster string) *ECSDeployer {
+	return newDeployer(ecs.NewFromConfig(cfg), cluster)
 }
 
 // newDeployer es el constructor inyectable usado por los tests.
-func newDeployer(api ecsAPI) *ECSDeployer {
-	return &ECSDeployer{api: api}
+func newDeployer(api ecsAPI, cluster string) *ECSDeployer {
+	return &ECSDeployer{api: api, cluster: cluster}
 }
 
 // ListServices devuelve el estado de los servicios del cluster.
-func (d *ECSDeployer) ListServices(ctx context.Context, cluster string) ([]core.ServiceStatus, error) {
+func (d *ECSDeployer) ListServices(ctx context.Context) ([]core.ServiceStatus, error) {
 	var arns []string
 	var token *string
 	for {
-		list, err := d.api.ListServices(ctx, &ecs.ListServicesInput{Cluster: awssdk.String(cluster), NextToken: token})
+		list, err := d.api.ListServices(ctx, &ecs.ListServicesInput{Cluster: awssdk.String(d.cluster), NextToken: token})
 		if err != nil {
 			return nil, err
 		}
@@ -58,7 +59,7 @@ func (d *ECSDeployer) ListServices(ctx context.Context, cluster string) ([]core.
 	var out []core.ServiceStatus
 	for _, batch := range chunk(arns, 10) { // ECS DescribeServices: máx 10 por llamada
 		desc, err := d.api.DescribeServices(ctx, &ecs.DescribeServicesInput{
-			Cluster:  awssdk.String(cluster),
+			Cluster:  awssdk.String(d.cluster),
 			Services: batch,
 		})
 		if err != nil {
@@ -79,16 +80,16 @@ func (d *ECSDeployer) ListServices(ctx context.Context, cluster string) ([]core.
 }
 
 // DeploymentStatus devuelve el estado del rollout activo (PRIMARY) de un servicio.
-func (d *ECSDeployer) DeploymentStatus(ctx context.Context, cluster, service string) (core.Deployment, error) {
+func (d *ECSDeployer) DeploymentStatus(ctx context.Context, service string) (core.Deployment, error) {
 	desc, err := d.api.DescribeServices(ctx, &ecs.DescribeServicesInput{
-		Cluster:  awssdk.String(cluster),
+		Cluster:  awssdk.String(d.cluster),
 		Services: []string{service},
 	})
 	if err != nil {
 		return core.Deployment{}, err
 	}
 	if len(desc.Services) == 0 {
-		return core.Deployment{}, fmt.Errorf("service %q not found in cluster %q", service, cluster)
+		return core.Deployment{}, fmt.Errorf("service %q not found in cluster %q", service, d.cluster)
 	}
 	s := desc.Services[0]
 	for _, dep := range s.Deployments {
@@ -110,16 +111,16 @@ func (d *ECSDeployer) DeploymentStatus(ctx context.Context, cluster, service str
 }
 
 // ServiceEvents devuelve los eventos del servicio (ECS los entrega más recientes primero).
-func (d *ECSDeployer) ServiceEvents(ctx context.Context, cluster, service string) ([]core.ServiceEvent, error) {
+func (d *ECSDeployer) ServiceEvents(ctx context.Context, service string) ([]core.ServiceEvent, error) {
 	desc, err := d.api.DescribeServices(ctx, &ecs.DescribeServicesInput{
-		Cluster:  awssdk.String(cluster),
+		Cluster:  awssdk.String(d.cluster),
 		Services: []string{service},
 	})
 	if err != nil {
 		return nil, err
 	}
 	if len(desc.Services) == 0 {
-		return nil, fmt.Errorf("service %q not found in cluster %q", service, cluster)
+		return nil, fmt.Errorf("service %q not found in cluster %q", service, d.cluster)
 	}
 	var out []core.ServiceEvent
 	for _, e := range desc.Services[0].Events {
@@ -162,16 +163,16 @@ func chunk(xs []string, n int) [][]string {
 var _ core.Deployer = (*ECSDeployer)(nil)
 
 // currentTaskDef obtiene la task definition activa de un servicio.
-func (d *ECSDeployer) currentTaskDef(ctx context.Context, cluster, service string) (*ecstypes.TaskDefinition, error) {
+func (d *ECSDeployer) currentTaskDef(ctx context.Context, service string) (*ecstypes.TaskDefinition, error) {
 	desc, err := d.api.DescribeServices(ctx, &ecs.DescribeServicesInput{
-		Cluster:  awssdk.String(cluster),
+		Cluster:  awssdk.String(d.cluster),
 		Services: []string{service},
 	})
 	if err != nil {
 		return nil, err
 	}
 	if len(desc.Services) == 0 {
-		return nil, fmt.Errorf("service %q not found in cluster %q", service, cluster)
+		return nil, fmt.Errorf("service %q not found in cluster %q", service, d.cluster)
 	}
 	tdArn := awssdk.ToString(desc.Services[0].TaskDefinition)
 	td, err := d.api.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{
@@ -193,8 +194,8 @@ func tagFromImage(image string) string {
 }
 
 // CurrentTag devuelve el tag de imagen del primer contenedor del servicio.
-func (d *ECSDeployer) CurrentTag(ctx context.Context, cluster, service string) (string, error) {
-	td, err := d.currentTaskDef(ctx, cluster, service)
+func (d *ECSDeployer) CurrentTag(ctx context.Context, service string) (string, error) {
+	td, err := d.currentTaskDef(ctx, service)
 	if err != nil {
 		return "", err
 	}
@@ -214,9 +215,9 @@ func replaceTag(image, newTag string) string {
 }
 
 // Scale ajusta el desired count del servicio.
-func (d *ECSDeployer) Scale(ctx context.Context, cluster, service string, count int) error {
+func (d *ECSDeployer) Scale(ctx context.Context, service string, count int) error {
 	_, err := d.api.UpdateService(ctx, &ecs.UpdateServiceInput{
-		Cluster:      awssdk.String(cluster),
+		Cluster:      awssdk.String(d.cluster),
 		Service:      awssdk.String(service),
 		DesiredCount: awssdk.Int32(int32(count)),
 	})
@@ -224,8 +225,8 @@ func (d *ECSDeployer) Scale(ctx context.Context, cluster, service string, count 
 }
 
 // Rollback apunta el servicio a la revisión de task def inmediatamente anterior.
-func (d *ECSDeployer) Rollback(ctx context.Context, cluster, service string) error {
-	td, err := d.currentTaskDef(ctx, cluster, service)
+func (d *ECSDeployer) Rollback(ctx context.Context, service string) error {
+	td, err := d.currentTaskDef(ctx, service)
 	if err != nil {
 		return err
 	}
@@ -242,7 +243,7 @@ func (d *ECSDeployer) Rollback(ctx context.Context, cluster, service string) err
 	}
 	prev := list.TaskDefinitionArns[1]
 	_, err = d.api.UpdateService(ctx, &ecs.UpdateServiceInput{
-		Cluster:        awssdk.String(cluster),
+		Cluster:        awssdk.String(d.cluster),
 		Service:        awssdk.String(service),
 		TaskDefinition: awssdk.String(prev),
 	})
@@ -250,7 +251,7 @@ func (d *ECSDeployer) Rollback(ctx context.Context, cluster, service string) err
 }
 
 // Deploy registra una nueva task def con la imagen re-tageada y apunta el servicio a ella.
-func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string, log core.StepLogger) error {
+func (d *ECSDeployer) Deploy(ctx context.Context, service, tag string, log core.StepLogger) error {
 	step := func(msg string) {
 		if log != nil {
 			log(msg)
@@ -258,7 +259,7 @@ func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string, 
 	}
 
 	step("reading current task definition")
-	td, err := d.currentTaskDef(ctx, cluster, service)
+	td, err := d.currentTaskDef(ctx, service)
 	if err != nil {
 		return err
 	}
@@ -294,7 +295,7 @@ func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string, 
 
 	step("updating service")
 	_, err = d.api.UpdateService(ctx, &ecs.UpdateServiceInput{
-		Cluster:        awssdk.String(cluster),
+		Cluster:        awssdk.String(d.cluster),
 		Service:        awssdk.String(service),
 		TaskDefinition: reg.TaskDefinition.TaskDefinitionArn,
 	})

@@ -59,9 +59,9 @@ func TestListServices(t *testing.T) {
 			DesiredCount: 3,
 		}}},
 	}
-	d := newDeployer(f)
+	d := newDeployer(f, "stg-cluster")
 
-	got, err := d.ListServices(context.Background(), "stg-cluster")
+	got, err := d.ListServices(context.Background())
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, "catalog", got[0].Name)
@@ -85,9 +85,9 @@ func TestCurrentTag(t *testing.T) {
 			}},
 		}},
 	}
-	d := newDeployer(f)
+	d := newDeployer(f, "stg-cluster")
 
-	tag, err := d.CurrentTag(context.Background(), "stg-cluster", "catalog")
+	tag, err := d.CurrentTag(context.Background(), "catalog")
 	require.NoError(t, err)
 	require.Equal(t, "v1.2.3", tag)
 }
@@ -114,9 +114,9 @@ func TestDeployRegistersAndUpdates(t *testing.T) {
 			TaskDefinitionArn: awssdk.String("arn:td/catalog:6"),
 		}},
 	}
-	d := newDeployer(f)
+	d := newDeployer(f, "stg-cluster")
 
-	err := d.Deploy(context.Background(), "stg-cluster", "catalog", "v2", nil)
+	err := d.Deploy(context.Background(), "catalog", "v2", nil)
 	require.NoError(t, err)
 
 	require.NotNil(t, f.registerIn)
@@ -131,9 +131,9 @@ func TestDeployRegistersAndUpdates(t *testing.T) {
 
 func TestScaleSetsDesiredCount(t *testing.T) {
 	f := &fakeECS{}
-	d := newDeployer(f)
+	d := newDeployer(f, "stg-cluster")
 
-	require.NoError(t, d.Scale(context.Background(), "stg-cluster", "catalog", 4))
+	require.NoError(t, d.Scale(context.Background(), "catalog", 4))
 	require.NotNil(t, f.updateIn)
 	require.Equal(t, "catalog", awssdk.ToString(f.updateIn.Service))
 	require.Equal(t, int32(4), awssdk.ToInt32(f.updateIn.DesiredCount))
@@ -152,9 +152,9 @@ func TestRollbackTargetsPreviousRevision(t *testing.T) {
 			"arn:td/catalog:6", "arn:td/catalog:5", "arn:td/catalog:4",
 		}},
 	}
-	d := newDeployer(f)
+	d := newDeployer(f, "stg-cluster")
 
-	require.NoError(t, d.Rollback(context.Background(), "stg-cluster", "catalog"))
+	require.NoError(t, d.Rollback(context.Background(), "catalog"))
 	require.NotNil(t, f.updateIn)
 	require.Equal(t, "arn:td/catalog:5", awssdk.ToString(f.updateIn.TaskDefinition))
 }
@@ -169,8 +169,8 @@ func TestRollbackNoPreviousRevision(t *testing.T) {
 		}},
 		listTDOut: &ecs.ListTaskDefinitionsOutput{TaskDefinitionArns: []string{"arn:td/catalog:1"}},
 	}
-	d := newDeployer(f)
-	require.Error(t, d.Rollback(context.Background(), "stg-cluster", "catalog"))
+	d := newDeployer(f, "stg-cluster")
+	require.Error(t, d.Rollback(context.Background(), "catalog"))
 }
 
 func TestDeployPreservesRuntimePlatform(t *testing.T) {
@@ -187,8 +187,8 @@ func TestDeployPreservesRuntimePlatform(t *testing.T) {
 			TaskDefinitionArn: awssdk.String("arn:td/catalog:6"),
 		}},
 	}
-	d := newDeployer(f)
-	require.NoError(t, d.Deploy(context.Background(), "stg-cluster", "catalog", "v2", nil))
+	d := newDeployer(f, "stg-cluster")
+	require.NoError(t, d.Deploy(context.Background(), "catalog", "v2", nil))
 	require.NotNil(t, f.registerIn.RuntimePlatform)
 	require.Equal(t, ecstypes.CPUArchitectureArm64, f.registerIn.RuntimePlatform.CpuArchitecture)
 }
@@ -203,8 +203,8 @@ func TestListServicesPaginates(t *testing.T) {
 			{ServiceName: awssdk.String("a"), RunningCount: 1, DesiredCount: 1},
 		}},
 	}
-	d := newDeployer(f)
-	got, err := d.ListServices(context.Background(), "c")
+	d := newDeployer(f, "stg-cluster")
+	got, err := d.ListServices(context.Background())
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(got), 1) // recorrió 2 páginas sin colgarse
 	require.Equal(t, 2, f.listIdx)         // consumió ambas páginas
@@ -219,9 +219,9 @@ func TestServiceEventsNewestFirst(t *testing.T) {
 			},
 		}}},
 	}
-	d := newDeployer(f)
+	d := newDeployer(f, "stg-cluster")
 
-	evs, err := d.ServiceEvents(context.Background(), "stg-cluster", "catalog")
+	evs, err := d.ServiceEvents(context.Background(), "catalog")
 	require.NoError(t, err)
 	require.Len(t, evs, 2)
 	require.Equal(t, "e2", evs[0].ID)
@@ -239,9 +239,9 @@ func TestDeploymentStatusReadsPrimary(t *testing.T) {
 			},
 		}}},
 	}
-	d := newDeployer(f)
+	d := newDeployer(f, "stg-cluster")
 
-	dep, err := d.DeploymentStatus(context.Background(), "stg-cluster", "catalog")
+	dep, err := d.DeploymentStatus(context.Background(), "catalog")
 	require.NoError(t, err)
 	require.Equal(t, core.RolloutInProgress, dep.Rollout)
 	require.Equal(t, 0, dep.Running)
@@ -266,9 +266,9 @@ func TestListServicesEnrichesPendingStatusTag(t *testing.T) {
 			}},
 		}},
 	}
-	d := newDeployer(f)
+	d := newDeployer(f, "stg-cluster")
 
-	got, err := d.ListServices(context.Background(), "stg-cluster")
+	got, err := d.ListServices(context.Background())
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, 1, got[0].Pending)

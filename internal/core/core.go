@@ -46,12 +46,12 @@ type StepLogger func(step string)
 
 // Deployer despliega y consulta servicios de cómputo (ECS / Container Apps / Cloud Run).
 type Deployer interface {
-	ListServices(ctx context.Context, cluster string) ([]ServiceStatus, error)
-	CurrentTag(ctx context.Context, cluster, service string) (string, error)
-	Deploy(ctx context.Context, cluster, service, tag string, log StepLogger) error
-	Scale(ctx context.Context, cluster, service string, count int) error
-	Rollback(ctx context.Context, cluster, service string) error
-	DeploymentStatus(ctx context.Context, cluster, service string) (Deployment, error)
+	ListServices(ctx context.Context) ([]ServiceStatus, error)
+	CurrentTag(ctx context.Context, service string) (string, error)
+	Deploy(ctx context.Context, service, tag string, log StepLogger) error
+	Scale(ctx context.Context, service string, count int) error
+	Rollback(ctx context.Context, service string) error
+	DeploymentStatus(ctx context.Context, service string) (Deployment, error)
 	// ServiceEvents devuelve los eventos del servicio, más recientes primero.
-	ServiceEvents(ctx context.Context, cluster, service string) ([]ServiceEvent, error)
+	ServiceEvents(ctx context.Context, service string) ([]ServiceEvent, error)
 }

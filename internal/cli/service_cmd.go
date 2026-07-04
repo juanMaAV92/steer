@@ -15,12 +15,8 @@ import (
 )
 
 // newDeployerFn es un seam inyectable: en tests se reemplaza por un fake.
-var newDeployerFn = func(app *AppContext) (core.Deployer, string, error) {
-	dep, err := app.Factory(app.Ctx)
-	if err != nil {
-		return nil, "", err
-	}
-	return dep, app.Ctx.Cluster, nil
+var newDeployerFn = func(app *AppContext) (core.Deployer, error) {
+	return app.Factory(app.Ctx)
 }
 
 // NewServiceCmd agrupa los comandos de la capacidad service.
@@ -69,13 +65,13 @@ func newServiceStatusCmd() *cobra.Command {
 		Short:   "List services and their running/desired counts",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			app := FromContext(cmd.Context())
-			dep, cluster, err := newDeployerFn(app)
+			dep, err := newDeployerFn(app)
 			if err != nil {
 				return err
 			}
 			out := cmd.OutOrStdout()
 			render1 := func() (string, error) {
-				services, err := dep.ListServices(cmd.Context(), cluster)
+				services, err := dep.ListServices(cmd.Context())
 				if err != nil {
 					return "", err
 				}
@@ -90,7 +86,7 @@ func newServiceStatusCmd() *cobra.Command {
 				return nil
 			}
 			// --watch: redibuja en el sitio subiendo el cursor las líneas previas.
-			header := fmt.Sprintf("%s  %s  %s\n", render.Bold("steer"), render.Dim(cluster),
+			header := fmt.Sprintf("%s  %s  %s\n", render.Bold("steer"), render.Dim(app.Ctx.Cluster),
 				render.Dim(fmt.Sprintf("(refresh %ds, Ctrl+C to stop)", interval)))
 			prevLines := 0
 			for {
@@ -128,13 +124,13 @@ func newServiceDeployCmd() *cobra.Command {
 			if yes && (service == "" || tag == "") {
 				return fmt.Errorf("non-interactive deploy (-y) requires --service and --tag")
 			}
-			dep, cluster, err := newDeployerFn(app)
+			dep, err := newDeployerFn(app)
 			if err != nil {
 				return err
 			}
 
 			if service == "" || tag == "" {
-				services, err := dep.ListServices(cmd.Context(), cluster)
+				services, err := dep.ListServices(cmd.Context())
 				if err != nil {
 					return err
 				}
@@ -150,7 +146,7 @@ func newServiceDeployCmd() *cobra.Command {
 			}
 			realName := app.Ctx.ServiceName(service)
 
-			current, err := dep.CurrentTag(cmd.Context(), cluster, realName)
+			current, err := dep.CurrentTag(cmd.Context(), realName)
 			if err != nil {
 				return err
 			}
@@ -167,7 +163,7 @@ func newServiceDeployCmd() *cobra.Command {
 				}
 			}
 
-			if err := dep.Deploy(cmd.Context(), cluster, realName, tag, func(s string) {
+			if err := dep.Deploy(cmd.Context(), realName, tag, func(s string) {
 				_, _ = fmt.Fprintln(out, render.Dim("[*] "+s))
 			}); err != nil {
 				return err
@@ -177,7 +173,7 @@ func newServiceDeployCmd() *cobra.Command {
 				render.Dim(fmt.Sprintf("rollback with: steer --context %s service rollback -s %s", app.Ctx.Name, service)))
 
 			if watch {
-				return watchRollout(cmd.Context(), out, dep, cluster, realName, interval)
+				return watchRollout(cmd.Context(), out, dep, realName, interval)
 			}
 			return nil
 		},
@@ -192,12 +188,12 @@ func newServiceDeployCmd() *cobra.Command {
 
 // watchRollout sigue el rollout: hace streaming de los eventos del servicio (como un
 // log de deploy) e imprime la línea de status solo cuando cambia, hasta COMPLETED/FAILED.
-func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster, service string, interval int) error {
+func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, service string, interval int) error {
 	_, _ = fmt.Fprintln(out, render.Dim("monitoring rollout (Ctrl+C to stop)..."))
 
 	// Marca el último evento ya existente para solo mostrar los nuevos.
 	lastID := ""
-	if evs, err := dep.ServiceEvents(ctx, cluster, service); err == nil && len(evs) > 0 {
+	if evs, err := dep.ServiceEvents(ctx, service); err == nil && len(evs) > 0 {
 		lastID = evs[0].ID
 	}
 
@@ -210,7 +206,7 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster
 		}
 
 		// Eventos nuevos (ECS los entrega más recientes primero) → se acumulan.
-		if evs, err := dep.ServiceEvents(ctx, cluster, service); err == nil {
+		if evs, err := dep.ServiceEvents(ctx, service); err == nil {
 			var fresh []core.ServiceEvent
 			for _, e := range evs {
 				if e.ID == lastID {
@@ -226,7 +222,7 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster
 			}
 		}
 
-		d, err := dep.DeploymentStatus(ctx, cluster, service)
+		d, err := dep.DeploymentStatus(ctx, service)
 		if err != nil {
 			_, _ = fmt.Fprintln(out)
 			return err
@@ -277,7 +273,7 @@ func newServiceScaleCmd() *cobra.Command {
 			if err := app.RequireWritable(); err != nil {
 				return err
 			}
-			dep, cluster, err := newDeployerFn(app)
+			dep, err := newDeployerFn(app)
 			if err != nil {
 				return err
 			}
@@ -291,7 +287,7 @@ func newServiceScaleCmd() *cobra.Command {
 					return nil
 				}
 			}
-			if err := dep.Scale(cmd.Context(), cluster, realName, count); err != nil {
+			if err := dep.Scale(cmd.Context(), realName, count); err != nil {
 				return err
 			}
 			_, _ = fmt.Fprintf(out, "%s %s %s\n", render.Success("✓ scaled"), render.Bold(service), render.Dim(fmt.Sprintf("to %d", count)))
@@ -318,7 +314,7 @@ func newServiceRollbackCmd() *cobra.Command {
 			if err := app.RequireWritable(); err != nil {
 				return err
 			}
-			dep, cluster, err := newDeployerFn(app)
+			dep, err := newDeployerFn(app)
 			if err != nil {
 				return err
 			}
@@ -332,7 +328,7 @@ func newServiceRollbackCmd() *cobra.Command {
 					return nil
 				}
 			}
-			if err := dep.Rollback(cmd.Context(), cluster, realName); err != nil {
+			if err := dep.Rollback(cmd.Context(), realName); err != nil {
 				return err
 			}
 			_, _ = fmt.Fprintf(out, "%s %s\n", render.Success("✓ rolled back"), render.Bold(service))

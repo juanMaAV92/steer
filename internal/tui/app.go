@@ -106,7 +106,7 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) loadServicesCmd() tea.Cmd {
 	return func() tea.Msg {
-		s, err := m.dep.ListServices(context.Background(), m.current.Cluster)
+		s, err := m.dep.ListServices(context.Background())
 		return servicesMsg{services: s, err: err}
 	}
 }
@@ -180,7 +180,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.loadServicesCmd()
 		}
 		m.deploy.LastID = msg.lastID
-		return m, deployPollCmd(m.dep, m.current.Cluster, m.deploy.Service, m.deploy.LastID)
+		return m, deployPollCmd(m.dep, m.deploy.Service, m.deploy.LastID)
 
 	case deployPollMsg:
 		if msg.err != nil {
@@ -213,7 +213,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case deployPollTickMsg:
 		if m.deploy.Active && !m.deploy.Done {
-			return m, deployPollCmd(m.dep, m.current.Cluster, m.deploy.Service, m.deploy.LastID)
+			return m, deployPollCmd(m.dep, m.deploy.Service, m.deploy.LastID)
 		}
 		return m, nil
 
@@ -347,7 +347,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.tabs.Active = panel.TabEvents
 				m.events.Reset()
 				m.deploy = deployState{Active: true, Service: svc}
-				return m, startDeployCmd(m.dep, m.current.Cluster, svc, tag)
+				return m, startDeployCmd(m.dep, svc, tag)
 			}
 			return m, m.runActionCmd()
 		default:
@@ -471,14 +471,14 @@ func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) runActionCmd() tea.Cmd {
 	a := m.action
-	dep, cluster := m.dep, m.current.Cluster
+	dep := m.dep
 	m.action.close()
 	m.focus = focusSidebar
 	return func() tea.Msg {
 		ctx := context.Background()
 		switch a.kind {
 		case actionRollback:
-			return actionDoneMsg{msg: "rolled back " + a.service, err: dep.Rollback(ctx, cluster, a.service)}
+			return actionDoneMsg{msg: "rolled back " + a.service, err: dep.Rollback(ctx, a.service)}
 		case actionDeploy:
 			// El deploy SIEMPRE va por startDeployCmd (flujo en vivo con eventos).
 			// Esta rama solo es alcanzable si un refactor rompe el guard de Enter.
@@ -489,7 +489,7 @@ func (m *Model) runActionCmd() tea.Cmd {
 				return actionDoneMsg{err: convErr}
 			}
 			return actionDoneMsg{msg: "scaled " + a.service + " to " + a.input,
-				err: dep.Scale(ctx, cluster, a.service, n)}
+				err: dep.Scale(ctx, a.service, n)}
 		}
 		return actionDoneMsg{}
 	}
