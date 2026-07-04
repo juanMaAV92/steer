@@ -12,7 +12,6 @@ import (
 func TestActionDeployTypingAndReady(t *testing.T) {
 	var a action
 	a.open(actionDeploy, "api")
-	require.True(t, a.active)
 	require.False(t, a.ready()) // input vacío
 	for _, r := range "v2" {
 		a.typeKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(string(r))})
@@ -29,13 +28,6 @@ func TestActionRollbackAlwaysReadyIgnoresTyping(t *testing.T) {
 	require.True(t, a.ready())
 	a.typeKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 	require.Empty(t, a.input) // rollback no acepta input
-}
-
-func TestActionCloseDeactivates(t *testing.T) {
-	var a action
-	a.open(actionScale, "api")
-	a.close()
-	require.False(t, a.active)
 }
 
 func TestActionModalDeploy(t *testing.T) {

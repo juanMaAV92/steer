@@ -8,23 +8,17 @@ import (
 )
 
 // action es el overlay de input para deploy/scale/rollback.
-// (actionKind y sus constantes ya existen en model.go y se reutilizan;
-// se eliminará el viejo pendingAction al borrar model.go en la Task 8.)
 type action struct {
 	kind    actionKind
 	service string
 	input   string
-	active  bool
 }
 
 func (a *action) open(kind actionKind, service string) {
 	a.kind = kind
 	a.service = service
 	a.input = ""
-	a.active = true
 }
-
-func (a *action) close() { a.active = false }
 
 func (a *action) typeKey(msg tea.KeyMsg) {
 	if a.kind == actionRollback {

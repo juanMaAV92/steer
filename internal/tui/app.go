@@ -383,8 +383,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// applyContextSwitch conmuta al contexto seleccionado en el picker.
-// Si el provider no está implementado o la fábrica falla, muestra un notice y no cambia.
+// applyContextSwitch conmuta al contexto recibido en sel; si el provider falla, muestra un notice.
 func (m Model) applyContextSwitch(sel config.Context) (tea.Model, tea.Cmd) {
 	if sel.Name == m.current.Name {
 		m.focus = focusSidebar
