@@ -284,7 +284,6 @@ func (d *ECSDeployer) Deploy(ctx context.Context, cluster, service, tag string, 
 		RuntimePlatform:         td.RuntimePlatform,
 		EphemeralStorage:        td.EphemeralStorage,
 		ProxyConfiguration:      td.ProxyConfiguration,
-		InferenceAccelerators:   td.InferenceAccelerators,
 		PidMode:                 td.PidMode,
 		IpcMode:                 td.IpcMode,
 	})

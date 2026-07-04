@@ -14,7 +14,6 @@ import (
 type sidebar struct {
 	services      []core.ServiceStatus
 	cursor        int
-	focused       bool
 	width, height int
 	prefix        string // prefijo a ocultar en la visualización (ej. "nao-v2-dev-")
 }

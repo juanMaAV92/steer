@@ -537,9 +537,10 @@ func (m Model) View() string {
 
 	sideStyle := blurredBorder()
 	panelStyle := blurredBorder()
-	if m.focus == focusSidebar {
+	switch m.focus {
+	case focusSidebar:
 		sideStyle = focusedBorder()
-	} else if m.focus == focusPanel {
+	case focusPanel:
 		panelStyle = focusedBorder()
 	}
 	panelBody := m.tabs.View() + "\n\n" + m.panelBody()

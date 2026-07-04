@@ -43,7 +43,7 @@ func newConfigInitCmd() *cobra.Command {
 			if err := os.WriteFile("steer.toml", []byte(exampleConfig), 0o600); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "created steer.toml")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "created steer.toml")
 			return nil
 		},
 	}
@@ -71,7 +71,7 @@ func newConfigValidateCmd() *cobra.Command {
 					return err
 				}
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "ok: %s (%d contexts)\n", path, len(all))
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "ok: %s (%d contexts)\n", path, len(all))
 			return nil
 		},
 	}

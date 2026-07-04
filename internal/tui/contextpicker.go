@@ -60,8 +60,6 @@ func (p contextPicker) selected() (config.Context, bool) {
 	return p.contexts[p.cursor], true
 }
 
-func (p contextPicker) rowCount() int { return len(p.contexts) }
-
 // indexAtLine mapea una línea (relativa al inicio del picker, donde la línea 0 es el
 // título "Switch context") al índice de contexto que se renderiza en esa línea.
 // Replica la estructura de view(): título, y por cada contexto un header de cloud

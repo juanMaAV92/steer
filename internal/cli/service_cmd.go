@@ -86,7 +86,7 @@ func newServiceStatusCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprint(out, content)
+				_, _ = fmt.Fprint(out, content)
 				return nil
 			}
 			// --watch: redibuja en el sitio subiendo el cursor las líneas previas.
@@ -100,9 +100,9 @@ func newServiceStatusCmd() *cobra.Command {
 				}
 				frame := header + content
 				if prevLines > 0 {
-					fmt.Fprintf(out, "\033[%dA\033[J", prevLines) // sube N líneas y limpia hacia abajo
+					_, _ = fmt.Fprintf(out, "\033[%dA\033[J", prevLines) // sube N líneas y limpia hacia abajo
 				}
-				fmt.Fprint(out, frame)
+				_, _ = fmt.Fprint(out, frame)
 				prevLines = strings.Count(frame, "\n")
 				time.Sleep(time.Duration(interval) * time.Second)
 			}
@@ -143,7 +143,7 @@ func newServiceDeployCmd() *cobra.Command {
 					return err
 				}
 				if !ok {
-					fmt.Fprintln(cmd.OutOrStdout(), "aborted")
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), "aborted")
 					return nil
 				}
 				service, tag = s, tg
@@ -155,24 +155,24 @@ func newServiceDeployCmd() *cobra.Command {
 				return err
 			}
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "%s (%s):\n  %s: %s %s %s\n",
+			_, _ = fmt.Fprintf(out, "%s (%s):\n  %s: %s %s %s\n",
 				render.Bold("Deploy preview"), app.Ctx.Name,
 				render.Bold(service), render.Dim(current), render.Dim("->"), render.Accent(tag))
 
 			if !yes {
-				fmt.Fprint(out, "Apply? [y/N]: ")
+				_, _ = fmt.Fprint(out, "Apply? [y/N]: ")
 				if !confirm(cmd.InOrStdin()) {
-					fmt.Fprintln(out, render.Dim("aborted"))
+					_, _ = fmt.Fprintln(out, render.Dim("aborted"))
 					return nil
 				}
 			}
 
 			if err := dep.Deploy(cmd.Context(), cluster, realName, tag, func(s string) {
-				fmt.Fprintln(out, render.Dim("[*] "+s))
+				_, _ = fmt.Fprintln(out, render.Dim("[*] "+s))
 			}); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "%s %s %s %s\n%s\n",
+			_, _ = fmt.Fprintf(out, "%s %s %s %s\n%s\n",
 				render.Success("✓ deployed"), render.Bold(service), render.Dim("->"), render.Accent(tag),
 				render.Dim(fmt.Sprintf("rollback with: steer --context %s service rollback -s %s", app.Ctx.Name, service)))
 
@@ -193,7 +193,7 @@ func newServiceDeployCmd() *cobra.Command {
 // watchRollout sigue el rollout: hace streaming de los eventos del servicio (como un
 // log de deploy) e imprime la línea de status solo cuando cambia, hasta COMPLETED/FAILED.
 func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster, service string, interval int) error {
-	fmt.Fprintln(out, render.Dim("monitoring rollout (Ctrl+C to stop)..."))
+	_, _ = fmt.Fprintln(out, render.Dim("monitoring rollout (Ctrl+C to stop)..."))
 
 	// Marca el último evento ya existente para solo mostrar los nuevos.
 	lastID := ""
@@ -206,7 +206,7 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster
 	statusShown := false
 	for {
 		if statusShown {
-			fmt.Fprint(out, "\r\033[K") // borra la línea de status actual
+			_, _ = fmt.Fprint(out, "\r\033[K") // borra la línea de status actual
 		}
 
 		// Eventos nuevos (ECS los entrega más recientes primero) → se acumulan.
@@ -228,21 +228,21 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster
 
 		d, err := dep.DeploymentStatus(ctx, cluster, service)
 		if err != nil {
-			fmt.Fprintln(out)
+			_, _ = fmt.Fprintln(out)
 			return err
 		}
 		// status sin salto de línea: queda como última línea, lista para reescribir.
-		fmt.Fprintf(out, "Rollout: %s | Running: %d | Pending: %d | Desired: %d",
+		_, _ = fmt.Fprintf(out, "Rollout: %s | Running: %d | Pending: %d | Desired: %d",
 			render.Rollout(string(d.Rollout)), d.Running, d.Pending, d.Desired)
 		statusShown = true
 
 		if d.Rollout == core.RolloutCompleted && d.Running >= d.Desired {
-			fmt.Fprintln(out)
-			fmt.Fprintln(out, render.Success("✓ deployment completed"))
+			_, _ = fmt.Fprintln(out)
+			_, _ = fmt.Fprintln(out, render.Success("✓ deployment completed"))
 			return nil
 		}
 		if d.Rollout == core.RolloutFailed {
-			fmt.Fprintln(out)
+			_, _ = fmt.Fprintln(out)
 			return fmt.Errorf("deployment failed for %q", service)
 		}
 		time.Sleep(time.Duration(interval) * time.Second)
@@ -253,10 +253,10 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster
 func printEvent(out io.Writer, e core.ServiceEvent) {
 	line := fmt.Sprintf("[%s] %s", e.At.Format("15:04:05"), e.Message)
 	if strings.Contains(e.Message, "unable to place") || strings.Contains(e.Message, "ResourceInitializationError") {
-		fmt.Fprintln(out, render.Danger(line))
+		_, _ = fmt.Fprintln(out, render.Danger(line))
 		return
 	}
-	fmt.Fprintln(out, render.Dim(line))
+	_, _ = fmt.Fprintln(out, render.Dim(line))
 }
 
 func newServiceScaleCmd() *cobra.Command {
@@ -283,18 +283,18 @@ func newServiceScaleCmd() *cobra.Command {
 			}
 			realName := app.Ctx.ServiceName(service)
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Scale %s to %d in %s\n", service, count, app.Ctx.Name)
+			_, _ = fmt.Fprintf(out, "Scale %s to %d in %s\n", service, count, app.Ctx.Name)
 			if !yes {
-				fmt.Fprint(out, "Apply? [y/N]: ")
+				_, _ = fmt.Fprint(out, "Apply? [y/N]: ")
 				if !confirm(cmd.InOrStdin()) {
-					fmt.Fprintln(out, "aborted")
+					_, _ = fmt.Fprintln(out, "aborted")
 					return nil
 				}
 			}
 			if err := dep.Scale(cmd.Context(), cluster, realName, count); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "%s %s %s\n", render.Success("✓ scaled"), render.Bold(service), render.Dim(fmt.Sprintf("to %d", count)))
+			_, _ = fmt.Fprintf(out, "%s %s %s\n", render.Success("✓ scaled"), render.Bold(service), render.Dim(fmt.Sprintf("to %d", count)))
 			return nil
 		},
 	}
@@ -324,18 +324,18 @@ func newServiceRollbackCmd() *cobra.Command {
 			}
 			realName := app.Ctx.ServiceName(service)
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Roll back %s in %s to previous revision\n", service, app.Ctx.Name)
+			_, _ = fmt.Fprintf(out, "Roll back %s in %s to previous revision\n", service, app.Ctx.Name)
 			if !yes {
-				fmt.Fprint(out, "Apply? [y/N]: ")
+				_, _ = fmt.Fprint(out, "Apply? [y/N]: ")
 				if !confirm(cmd.InOrStdin()) {
-					fmt.Fprintln(out, "aborted")
+					_, _ = fmt.Fprintln(out, "aborted")
 					return nil
 				}
 			}
 			if err := dep.Rollback(cmd.Context(), cluster, realName); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "%s %s\n", render.Success("✓ rolled back"), render.Bold(service))
+			_, _ = fmt.Fprintf(out, "%s %s\n", render.Success("✓ rolled back"), render.Bold(service))
 			return nil
 		},
 	}
