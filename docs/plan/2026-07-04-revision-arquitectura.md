@@ -48,7 +48,7 @@ generalizarlas ahora, con una sola capacidad que migrar, no tras copiar el patr�
 | 2 | Costuras (cluster al constructor, Provider bundle + ctx, Validate, IsError) + cancelación cableada en la raíz | ✅ mergeado (T6–T10 + fix final, `5368a59..8827f4d`) |
 | 3 | Config anidada por capacidad | junto al hito registry |
 | 4 | Registry (spec revisado: `Provider.Registry()` en vez de `RegistryFactory`) | siguiente — revisar spec primero |
-| 5 | TUI: overlay + sidebar por secciones + registro de comandos | antes de ⌘k/IMAGES |
+| 5 | TUI: overlay + sidebar por secciones + hit-testing unificado | ✅ mergeado (plan `2026-07-04-refactor-tui-overlays.md`, 7/7 + barrida, `b491799..09a1ab1`). El registro de comandos enumerable queda para el hito de la paleta ⌘k (nota: capturar foco previo al cerrar overlays). |
 
 Minors diferidos del ledger (cosméticos, triados en la revisión final): campo `ctx config.Context`
 en `aws/provider.go` (renombrar a `cfgCtx`), `HasPrefix("providers")` sin límite de palabra,
