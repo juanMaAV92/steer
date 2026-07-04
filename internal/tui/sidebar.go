@@ -61,8 +61,34 @@ func (s sidebar) selected() (core.ServiceStatus, bool) {
 	return s.services[s.cursor], true
 }
 
-// serviceRowCount es el nº de filas de servicio clicables (mapeo de mouse).
-func (s sidebar) serviceRowCount() int { return len(s.services) }
+// sidebarSection identifica cada bloque apilado dentro del sidebar.
+type sidebarSection int
+
+const (
+	sectionServices sidebarSection = iota
+	sectionImages
+	sectionDatabases
+)
+
+// sidebarHit ubica un click dentro de una sección del sidebar y su índice interno.
+type sidebarHit struct {
+	Section sidebarSection
+	Index   int // índice dentro de la sección (solo services tiene filas hoy)
+}
+
+// HitAtRow replica la estructura de view(): header SERVICES (fila 0), un servicio por
+// fila, y después solo headers/stubs no accionables. Cuando IMAGES/DATABASES tengan
+// filas reales, este mapeo crece con ellas (mismo patrón que contextPicker.indexAtLine).
+func (s sidebar) HitAtRow(row int) (sidebarHit, bool) {
+	if row < 1 { // fila 0: header "SERVICES (n)"
+		return sidebarHit{}, false
+	}
+	if idx := row - 1; idx < len(s.services) {
+		return sidebarHit{Section: sectionServices, Index: idx}, true
+	}
+	// blanco, IMAGES header/stub, blanco, DATABASES header/stub: no accionables
+	return sidebarHit{}, false
+}
 
 func (s sidebar) view() string {
 	var b strings.Builder

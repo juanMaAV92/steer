@@ -85,6 +85,35 @@ func TestSidebarSortOrder(t *testing.T) {
 	require.Equal(t, "worker", s.services[3].Name)
 }
 
+// TestHitAtRow verifica que HitAtRow replica la estructura de view(): fila 0 es el
+// header SERVICES, filas 1..n son los servicios, y todo lo demás no es accionable.
+func TestHitAtRow(t *testing.T) {
+	s := newSidebar()
+	s.setServices(sampleServices()) // 4 servicios ordenados
+	// fila 0 = header SERVICES → no accionable
+	_, ok := s.HitAtRow(0)
+	require.False(t, ok)
+	// filas 1..4 = servicios 0..3
+	hit, ok := s.HitAtRow(1)
+	require.True(t, ok)
+	require.Equal(t, sectionServices, hit.Section)
+	require.Equal(t, 0, hit.Index)
+	hit, ok = s.HitAtRow(4)
+	require.True(t, ok)
+	require.Equal(t, 3, hit.Index)
+	// fila 5 = línea en blanco antes de IMAGES → no accionable
+	_, ok = s.HitAtRow(5)
+	require.False(t, ok)
+	// headers/stubs de IMAGES/DATABASES → no accionables
+	_, ok = s.HitAtRow(6)
+	require.False(t, ok)
+	// fuera de rango
+	_, ok = s.HitAtRow(-1)
+	require.False(t, ok)
+	_, ok = s.HitAtRow(99)
+	require.False(t, ok)
+}
+
 // TestSidebarPrefixStrip verifica que el prefijo se oculta en la visualización
 // pero el Name real permanece intacto para las acciones.
 func TestSidebarPrefixStrip(t *testing.T) {

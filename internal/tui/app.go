@@ -30,11 +30,9 @@ const (
 // Constantes de geometría para el routing de mouse.
 // topBarHeight: la barra superior ocupa 1 línea.
 // borderTop: fila del borde superior del sidebar/panel (1 fila del borde lipgloss redondeado).
-// sidebarHeader: línea "SERVICES (n)" dentro del borde.
 const (
-	topBarHeight  = 1 // la barra superior ocupa 1 línea
-	borderTop     = 1 // borde superior del sidebar/panel
-	sidebarHeader = 1 // línea "SERVICES (n)" dentro del borde
+	topBarHeight = 1 // la barra superior ocupa 1 línea
+	borderTop    = 1 // borde superior del sidebar/panel
 )
 
 type actionKind int
@@ -288,9 +286,9 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	}
 	// click en la zona del sidebar
 	if msg.X <= m.sidebarW {
-		row := msg.Y - (topBarHeight + borderTop + sidebarHeader)
-		if row >= 0 && row < m.sidebar.serviceRowCount() {
-			m.sidebar.selectIndex(row)
+		row := msg.Y - (topBarHeight + borderTop)
+		if hit, ok := m.sidebar.HitAtRow(row); ok && hit.Section == sectionServices {
+			m.sidebar.selectIndex(hit.Index)
 			m.focus = focusSidebar
 		}
 		return nil
