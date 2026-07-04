@@ -230,15 +230,15 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, cluster
 		}
 		// status sin salto de línea: queda como última línea, lista para reescribir.
 		fmt.Fprintf(out, "Rollout: %s | Running: %d | Pending: %d | Desired: %d",
-			rolloutColor(d.Rollout), d.Running, d.Pending, d.Desired)
+			render.Rollout(string(d.Rollout)), d.Running, d.Pending, d.Desired)
 		statusShown = true
 
-		if d.Rollout == "COMPLETED" && d.Running >= d.Desired {
+		if d.Rollout == core.RolloutCompleted && d.Running >= d.Desired {
 			fmt.Fprintln(out)
 			fmt.Fprintln(out, render.Success("✓ deployment completed"))
 			return nil
 		}
-		if d.Rollout == "FAILED" {
+		if d.Rollout == core.RolloutFailed {
 			fmt.Fprintln(out)
 			return fmt.Errorf("deployment failed for %q", service)
 		}
@@ -254,17 +254,6 @@ func printEvent(out io.Writer, e core.ServiceEvent) {
 		return
 	}
 	fmt.Fprintln(out, render.Dim(line))
-}
-
-func rolloutColor(state string) string {
-	switch state {
-	case "COMPLETED":
-		return render.Success(state)
-	case "FAILED":
-		return render.Danger(state)
-	default:
-		return render.Accent(state)
-	}
 }
 
 func newServiceScaleCmd() *cobra.Command {

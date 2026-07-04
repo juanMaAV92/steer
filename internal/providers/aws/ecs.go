@@ -94,7 +94,7 @@ func (d *ECSDeployer) DeploymentStatus(ctx context.Context, cluster, service str
 	for _, dep := range s.Deployments {
 		if awssdk.ToString(dep.Status) == "PRIMARY" {
 			return core.Deployment{
-				Rollout: string(dep.RolloutState),
+				Rollout: core.RolloutState(dep.RolloutState),
 				Running: int(dep.RunningCount),
 				Pending: int(dep.PendingCount),
 				Desired: int(s.DesiredCount), // desired autoritativo del servicio

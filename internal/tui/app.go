@@ -184,7 +184,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.events.AppendLine(render.Dim("[" + e.At.Format("15:04:05") + "] " + e.Message))
 		}
 		m.deployLastID = msg.lastID
-		m.events.SetStatusLine("Rollout: " + rolloutColored(msg.rollout) +
+		m.events.SetStatusLine("Rollout: " + render.Rollout(string(msg.rollout)) +
 			" | Running: " + strconv.Itoa(msg.running) +
 			" | Pending: " + strconv.Itoa(msg.pending) +
 			" | Desired: " + strconv.Itoa(msg.desired))
@@ -566,17 +566,5 @@ func (m Model) panelBody() string {
 	default:
 		displayName := strings.TrimPrefix(s.Name, m.current.Prefix())
 		return panel.DetailsView(s, m.current.Writable, displayName)
-	}
-}
-
-// rolloutColored colorea el estado del rollout según su nivel.
-func rolloutColored(state string) string {
-	switch state {
-	case "COMPLETED":
-		return render.Success(state)
-	case "FAILED":
-		return render.Danger(state)
-	default:
-		return render.Accent(state)
 	}
 }

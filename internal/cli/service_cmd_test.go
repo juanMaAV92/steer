@@ -55,7 +55,7 @@ func TestDeployRequiresServiceAndTag(t *testing.T) {
 func TestDeployWatchFollowsRollout(t *testing.T) {
 	fake := &coretest.FakeDeployer{
 		CurrentTagValue: "v1",
-		DeploymentValue: core.Deployment{Rollout: "COMPLETED", Running: 1, Desired: 1},
+		DeploymentValue: core.Deployment{Rollout: core.RolloutCompleted, Running: 1, Desired: 1},
 	}
 	withFakeDeployer(t, fake)
 

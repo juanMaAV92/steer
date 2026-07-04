@@ -49,8 +49,8 @@ func deployPollCmd(dep core.Deployer, cluster, service, lastID string) tea.Cmd {
 		return deployPollMsg{
 			events: fresh, lastID: newLast,
 			rollout: d.Rollout, running: d.Running, pending: d.Pending, desired: d.Desired,
-			done:   d.Rollout == "COMPLETED" && d.Running >= d.Desired,
-			failed: d.Rollout == "FAILED",
+			done:   d.Rollout == core.RolloutCompleted && d.Running >= d.Desired,
+			failed: d.Rollout == core.RolloutFailed,
 			err:    err,
 		}
 	}

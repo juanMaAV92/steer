@@ -9,6 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestRolloutStateConstants(t *testing.T) {
+	require.Equal(t, core.RolloutState("COMPLETED"), core.RolloutCompleted)
+	require.Equal(t, core.RolloutState("FAILED"), core.RolloutFailed)
+	require.Equal(t, core.RolloutState("IN_PROGRESS"), core.RolloutInProgress)
+}
+
 func TestFakeDeployerImplementsInterface(t *testing.T) {
 	var d core.Deployer = &coretest.FakeDeployer{
 		Services:        []core.ServiceStatus{{Name: "catalog", Running: 2, Desired: 2}},

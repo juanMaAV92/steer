@@ -27,7 +27,7 @@ type deployStartedMsg struct {
 type deployPollMsg struct {
 	events                    []core.ServiceEvent
 	lastID                    string
-	rollout                   string
+	rollout                   core.RolloutState
 	running, pending, desired int
 	done, failed              bool
 	err                       error

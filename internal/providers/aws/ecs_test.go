@@ -7,6 +7,7 @@ import (
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/stretchr/testify/require"
 )
 
@@ -242,7 +243,7 @@ func TestDeploymentStatusReadsPrimary(t *testing.T) {
 
 	dep, err := d.DeploymentStatus(context.Background(), "stg-cluster", "catalog")
 	require.NoError(t, err)
-	require.Equal(t, "IN_PROGRESS", dep.Rollout)
+	require.Equal(t, core.RolloutInProgress, dep.Rollout)
 	require.Equal(t, 0, dep.Running)
 	require.Equal(t, 1, dep.Pending)
 	require.Equal(t, 1, dep.Desired)

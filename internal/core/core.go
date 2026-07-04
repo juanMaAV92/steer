@@ -24,9 +24,18 @@ type ServiceStatus struct {
 	Tag     string // tag de imagen en uso (vacío si no se pudo resolver)
 }
 
+// RolloutState es el estado del despliegue activo, normalizado entre providers.
+type RolloutState string
+
+const (
+	RolloutInProgress RolloutState = "IN_PROGRESS"
+	RolloutCompleted  RolloutState = "COMPLETED"
+	RolloutFailed     RolloutState = "FAILED"
+)
+
 // Deployment es el estado del despliegue activo (rollout) de un servicio.
 type Deployment struct {
-	Rollout string // p.ej. IN_PROGRESS, COMPLETED, FAILED
+	Rollout RolloutState
 	Running int
 	Pending int
 	Desired int

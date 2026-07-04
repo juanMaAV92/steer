@@ -287,7 +287,7 @@ func TestSwitchDuringDeployStopsPollLoop(t *testing.T) {
 func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 	fake := &coretest.FakeDeployer{
 		Services:        sampleServices(),
-		DeploymentValue: core.Deployment{Rollout: "COMPLETED", Running: 2, Desired: 2},
+		DeploymentValue: core.Deployment{Rollout: core.RolloutCompleted, Running: 2, Desired: 2},
 	}
 	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
 	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
