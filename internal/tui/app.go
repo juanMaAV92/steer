@@ -296,9 +296,10 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	// click en la fila de botones de acción del panel Details
-	// La geometría de botones solo es válida en modo dos columnas; en una columna Y=11 cae
+	// La geometría de botones solo es válida en modo dos columnas; en una columna cae
 	// dentro del sidebar y provocaría un misfire que abre el modal de acción erróneamente.
-	const detailsButtonRowY = 11 // topBar(1)+borde(1)+tabs(1)+blanco(1)+details: name,blank,4 stats,blank,botones
+	// fila de botones de Details en pantalla, derivada del layout real del panel
+	detailsButtonRowY := topBarHeight + borderTop + 1 /*pestañas*/ + 1 /*línea en blanco*/ + panel.DetailsButtonLine
 	if !m.singleColumn && m.current.Writable && m.tabs.Active == panel.TabDetails && msg.Y == detailsButtonRowY {
 		localX := msg.X - (m.sidebarW + 3)
 		if idx := render.ButtonAtColumn(panel.DetailsActionLabels, localX); idx >= 0 {

@@ -31,3 +31,11 @@ func TestDetailsViewDisplayName(t *testing.T) {
 	require.Contains(t, out, "audit-ms")
 	require.NotContains(t, out, "nao-v2-dev-audit-ms")
 }
+
+// DetailsButtonLine debe apuntar a la línea real de los botones en el render.
+func TestDetailsButtonLineMatchesRender(t *testing.T) {
+	s := core.ServiceStatus{Name: "api", Running: 2, Desired: 2, Status: "ACTIVE", Tag: "v1"}
+	lines := strings.Split(DetailsView(s, true, "api"), "\n")
+	require.Greater(t, len(lines), DetailsButtonLine)
+	require.Contains(t, lines[DetailsButtonLine], "Deploy (d)")
+}

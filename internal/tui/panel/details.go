@@ -12,6 +12,11 @@ import (
 // Fuente única: las usa DetailsView para renderizar y app.go para el hit-testing del click.
 var DetailsActionLabels = []string{"Deploy (d)", "Scale (s)", "Rollback (R)"}
 
+// DetailsButtonLine es la línea (0-based) de la fila de botones dentro del output de
+// DetailsView: name(0), blank(1), running(2), pending(3), status(4), tag(5), blank(6), botones(7).
+// El test TestDetailsButtonLineMatchesRender la valida contra el render real.
+const DetailsButtonLine = 7
+
 // DetailsView renderiza la pestaña Details con stats y la fila de acciones.
 // displayName es el nombre de visualización (sin prefijo de entorno).
 func DetailsView(s core.ServiceStatus, writable bool, displayName string) string {
