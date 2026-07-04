@@ -250,10 +250,10 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, service
 	}
 }
 
-// printEvent imprime un evento de servicio con timestamp; rojo si parece error.
+// printEvent imprime un evento de servicio con timestamp; rojo si es error, gris si no.
 func printEvent(out io.Writer, e core.ServiceEvent) {
 	line := fmt.Sprintf("[%s] %s", e.At.Format("15:04:05"), e.Message)
-	if strings.Contains(e.Message, "unable to place") || strings.Contains(e.Message, "ResourceInitializationError") {
+	if e.IsError {
 		_, _ = fmt.Fprintln(out, render.Danger(line))
 		return
 	}

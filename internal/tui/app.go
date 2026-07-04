@@ -198,7 +198,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		for i := len(msg.events) - 1; i >= 0; i-- {
 			e := msg.events[i]
-			m.events.AppendLine(render.Dim("[" + e.At.Format("15:04:05") + "] " + e.Message))
+			line := "[" + e.At.Format("15:04:05") + "] " + e.Message
+			if e.IsError {
+				m.events.AppendLine(render.Danger(line))
+			} else {
+				m.events.AppendLine(render.Dim(line))
+			}
 		}
 		m.deploy.LastID = msg.lastID
 		m.events.SetStatusLine("Rollout: " + render.Rollout(string(msg.rollout)) +

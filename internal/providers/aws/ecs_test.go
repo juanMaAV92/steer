@@ -275,3 +275,21 @@ func TestListServicesEnrichesPendingStatusTag(t *testing.T) {
 	require.Equal(t, "ACTIVE", got[0].Status)
 	require.Equal(t, "v1.2.3", got[0].Tag)
 }
+
+func TestServiceEventsMarksErrors(t *testing.T) {
+	f := &fakeECS{
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			Events: []ecstypes.ServiceEvent{
+				{Id: awssdk.String("e2"), Message: awssdk.String("service was unable to place a task")},
+				{Id: awssdk.String("e1"), Message: awssdk.String("reached a steady state")},
+			},
+		}}},
+	}
+	d := newDeployer(f, "stg-cluster")
+
+	evs, err := d.ServiceEvents(context.Background(), "catalog")
+	require.NoError(t, err)
+	require.Len(t, evs, 2)
+	require.True(t, evs[0].IsError)
+	require.False(t, evs[1].IsError)
+}

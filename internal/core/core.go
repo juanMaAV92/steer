@@ -12,6 +12,7 @@ type ServiceEvent struct {
 	ID      string
 	At      time.Time
 	Message string
+	IsError bool
 }
 
 // ServiceStatus es el estado de un servicio/contenedor.

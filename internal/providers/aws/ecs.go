@@ -124,10 +124,12 @@ func (d *ECSDeployer) ServiceEvents(ctx context.Context, service string) ([]core
 	}
 	var out []core.ServiceEvent
 	for _, e := range desc.Services[0].Events {
+		msg := awssdk.ToString(e.Message)
 		out = append(out, core.ServiceEvent{
 			ID:      awssdk.ToString(e.Id),
 			At:      awssdk.ToTime(e.CreatedAt),
-			Message: awssdk.ToString(e.Message),
+			Message: msg,
+			IsError: strings.Contains(msg, "unable to place") || strings.Contains(msg, "ResourceInitializationError"),
 		})
 	}
 	return out, nil
