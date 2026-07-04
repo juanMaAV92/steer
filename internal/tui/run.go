@@ -14,6 +14,7 @@ func Run(ctx context.Context, factory providers.ProviderFactory, contexts []conf
 		New(ctx, factory, contexts, current),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
+		tea.WithContext(ctx),
 	)
 	_, err := p.Run()
 	return err

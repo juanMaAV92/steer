@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,6 +25,13 @@ func runRoot(t *testing.T, args ...string) (string, error) {
 			t.Chdir(dir)
 		}
 	}
+	return runRootCtx(t, context.Background(), args...)
+}
+
+// runRootCtx es como runRoot pero permite inyectar un contexto propio, usado
+// por tests que verifican propagación de cancelación (ExecuteContext).
+func runRootCtx(t *testing.T, ctx context.Context, args ...string) (string, error) {
+	t.Helper()
 	root := NewRootCmd("test")
 	root.AddCommand(NewConfigCmd())
 	root.AddCommand(NewServiceCmd())
@@ -31,7 +39,7 @@ func runRoot(t *testing.T, args ...string) (string, error) {
 	root.SetOut(&out)
 	root.SetErr(&out)
 	root.SetArgs(args)
-	err := root.Execute()
+	err := root.ExecuteContext(ctx)
 	return out.String(), err
 }
 

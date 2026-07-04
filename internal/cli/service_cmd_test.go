@@ -128,6 +128,27 @@ func TestRollbackCommand(t *testing.T) {
 	require.Equal(t, []string{"catalog"}, fake.RollbackCalls)
 }
 
+// TestExecuteContextCancelsWatchPromptly verifica que la cancelación llega
+// hasta el comando vía ExecuteContext (main.go pasa un ctx sensible a señales):
+// con un ctx ya cancelado, `deploy -w` debe abortar de inmediato con
+// context.Canceled en vez de quedarse en el loop de watch.
+func TestExecuteContextCancelsWatchPromptly(t *testing.T) {
+	fake := &coretest.FakeDeployer{
+		CurrentTagValue: "v1",
+		DeploymentValue: core.Deployment{Rollout: core.RolloutInProgress},
+	}
+	withFakeDeployer(t, fake)
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "steer.toml"), []byte(minimalToml), 0o600))
+	t.Chdir(dir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := runRootCtx(t, ctx, "service", "deploy", "-s", "catalog", "-t", "v2", "-y", "-w")
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestWatchRolloutStopsOnCancel(t *testing.T) {
 	fake := &coretest.FakeDeployer{DeploymentValue: core.Deployment{Rollout: core.RolloutInProgress}}
 	ctx, cancel := context.WithCancel(context.Background())
