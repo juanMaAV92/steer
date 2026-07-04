@@ -57,7 +57,9 @@ func (d *deployState) Reset() { *d = deployState{} }
 
 // Model es el estado raíz de la TUI (patrón Elm de Bubble Tea).
 type Model struct {
-	factory  providers.DeployerFactory
+	runCtx   context.Context
+	factory  providers.ProviderFactory
+	provider providers.Provider
 	contexts []config.Context
 	current  config.Context
 	dep      core.Deployer
@@ -82,10 +84,14 @@ type Model struct {
 	deploy                  deployState
 }
 
-func New(factory providers.DeployerFactory, contexts []config.Context, current config.Context) Model {
-	dep, err := factory(current)
+func New(ctx context.Context, factory providers.ProviderFactory, contexts []config.Context, current config.Context) Model {
+	provider, err := factory(ctx, current)
+	var dep core.Deployer
+	if err == nil {
+		dep, err = provider.Deployer()
+	}
 	m := Model{
-		factory: factory, contexts: contexts, current: current,
+		runCtx: ctx, factory: factory, provider: provider, contexts: contexts, current: current,
 		dep: dep, depErr: err,
 		keys: defaultKeys(), sidebar: newSidebar(), events: panel.NewEvents(),
 		loading: err == nil,
@@ -420,7 +426,15 @@ func (m Model) applyContextSwitch() (tea.Model, tea.Cmd) {
 		m.focus = focusSidebar
 		return m, nil
 	}
-	dep, err := m.factory(sel)
+	provider, err := m.factory(m.runCtx, sel)
+	if err == nil {
+		var dep core.Deployer
+		dep, err = provider.Deployer()
+		if err == nil {
+			m.provider = provider
+			m.dep = dep
+		}
+	}
 	if err != nil {
 		if errors.Is(err, providers.ErrProviderNotImplemented) {
 			m.notice = "provider " + strconv.Quote(sel.Cloud) + " not implemented yet"
@@ -430,7 +444,6 @@ func (m Model) applyContextSwitch() (tea.Model, tea.Cmd) {
 		m.focus = focusSidebar
 		return m, nil // conserva el contexto previo
 	}
-	m.dep = dep
 	m.current = sel
 	m.sidebar = newSidebar()
 	m.sidebar.prefix = sel.Prefix()

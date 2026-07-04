@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -13,6 +14,11 @@ import (
 	"github.com/juanMaAV92/steer/internal/providers"
 	"github.com/juanMaAV92/steer/internal/tui"
 )
+
+// fakeProvider adapta un core.Deployer en memoria al Provider bundle.
+type fakeProvider struct{ dep core.Deployer }
+
+func (p fakeProvider) Deployer() (core.Deployer, error) { return p.dep, nil }
 
 func main() {
 	now := time.Now()
@@ -31,8 +37,10 @@ func main() {
 		},
 	}
 	cur := config.Context{Name: "demo", Cloud: "aws", Cluster: "demo-cluster", Writable: true}
-	factory := providers.DeployerFactory(func(_ config.Context) (core.Deployer, error) { return fake, nil })
-	if err := tui.Run(factory, []config.Context{cur}, cur); err != nil {
+	factory := providers.ProviderFactory(func(context.Context, config.Context) (providers.Provider, error) {
+		return fakeProvider{dep: fake}, nil
+	})
+	if err := tui.Run(context.Background(), factory, []config.Context{cur}, cur); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}

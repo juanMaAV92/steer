@@ -14,11 +14,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newDeployerFn es un seam inyectable: en tests se reemplaza por un fake.
-var newDeployerFn = func(app *AppContext) (core.Deployer, error) {
-	return app.Factory(app.Ctx)
-}
-
 // NewServiceCmd agrupa los comandos de la capacidad service.
 func NewServiceCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -65,7 +60,7 @@ func newServiceStatusCmd() *cobra.Command {
 		Short:   "List services and their running/desired counts",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			app := FromContext(cmd.Context())
-			dep, err := newDeployerFn(app)
+			dep, err := app.Deployer(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -124,7 +119,7 @@ func newServiceDeployCmd() *cobra.Command {
 			if yes && (service == "" || tag == "") {
 				return fmt.Errorf("non-interactive deploy (-y) requires --service and --tag")
 			}
-			dep, err := newDeployerFn(app)
+			dep, err := app.Deployer(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -273,7 +268,7 @@ func newServiceScaleCmd() *cobra.Command {
 			if err := app.RequireWritable(); err != nil {
 				return err
 			}
-			dep, err := newDeployerFn(app)
+			dep, err := app.Deployer(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -314,7 +309,7 @@ func newServiceRollbackCmd() *cobra.Command {
 			if err := app.RequireWritable(); err != nil {
 				return err
 			}
-			dep, err := newDeployerFn(app)
+			dep, err := app.Deployer(cmd.Context())
 			if err != nil {
 				return err
 			}

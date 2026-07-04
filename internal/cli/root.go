@@ -11,6 +11,11 @@ import (
 
 type ctxKey struct{}
 
+// newProviderFactoryFn es un seam inyectable: en tests se reemplaza por una
+// fábrica fake. Único seam para todas las capacidades del provider (deployer,
+// registry, etc.).
+var newProviderFactoryFn = providers.NewProviderFactory
+
 // FromContext recupera el AppContext de un cobra.Command.
 func FromContext(ctx context.Context) *AppContext {
 	if a, ok := ctx.Value(ctxKey{}).(*AppContext); ok {
@@ -35,7 +40,7 @@ func NewRootCmd(version string) *cobra.Command {
 	_ = root.PersistentFlags().MarkDeprecated("env", "use --context instead")
 
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
-		factory := providers.NewDeployerFactory()
+		factory := newProviderFactoryFn()
 		// Los comandos `config` no requieren un steer.toml ya cargado.
 		if cmd.Parent() != nil && cmd.Parent().Name() == "config" {
 			cmd.SetContext(context.WithValue(cmd.Context(), ctxKey{}, &AppContext{Factory: factory}))

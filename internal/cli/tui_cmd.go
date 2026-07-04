@@ -12,7 +12,7 @@ func NewTuiCmd() *cobra.Command {
 		Short: "Open the interactive dashboard",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			app := FromContext(cmd.Context())
-			return tui.Run(app.Factory, app.Config.AllContexts(), app.Ctx)
+			return tui.Run(cmd.Context(), app.Factory, app.Config.AllContexts(), app.Ctx)
 		},
 	}
 }

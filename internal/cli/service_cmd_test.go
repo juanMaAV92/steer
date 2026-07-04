@@ -1,22 +1,32 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/juanMaAV92/steer/internal/core/coretest"
+	"github.com/juanMaAV92/steer/internal/providers"
 	"github.com/stretchr/testify/require"
 )
 
+// fakeProvider adapta un core.Deployer fake al Provider bundle.
+type fakeProvider struct{ dep core.Deployer }
+
+func (p fakeProvider) Deployer() (core.Deployer, error) { return p.dep, nil }
+
 func withFakeDeployer(t *testing.T, fake core.Deployer) {
 	t.Helper()
-	prev := newDeployerFn
-	newDeployerFn = func(_ *AppContext) (core.Deployer, error) {
-		return fake, nil
+	prev := newProviderFactoryFn
+	newProviderFactoryFn = func() providers.ProviderFactory {
+		return func(context.Context, config.Context) (providers.Provider, error) {
+			return fakeProvider{dep: fake}, nil
+		}
 	}
-	t.Cleanup(func() { newDeployerFn = prev })
+	t.Cleanup(func() { newProviderFactoryFn = prev })
 }
 
 // runRootWithFake combina runRoot con un FakeDeployer neutro, para tests que

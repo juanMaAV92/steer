@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"regexp"
 	"strings"
 	"testing"
@@ -17,6 +18,17 @@ import (
 
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
+// fakeFactory adapta un core.Deployer fake a una ProviderFactory (para tests).
+func fakeFactory(dep core.Deployer) providers.ProviderFactory {
+	return func(context.Context, config.Context) (providers.Provider, error) {
+		return fakeProvider{dep: dep}, nil
+	}
+}
+
+type fakeProvider struct{ dep core.Deployer }
+
+func (p fakeProvider) Deployer() (core.Deployer, error) { return p.dep, nil }
+
 // stripANSI elimina secuencias de escape ANSI de una cadena.
 func stripANSI(s string) string {
 	return ansiRE.ReplaceAllString(s, "")
@@ -24,9 +36,9 @@ func stripANSI(s string) string {
 
 func newTestModel(services []core.ServiceStatus) Model {
 	fake := &coretest.FakeDeployer{Services: services}
-	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	factory := fakeFactory(fake)
 	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
-	m := New(factory, []config.Context{cur}, cur)
+	m := New(context.Background(), factory, []config.Context{cur}, cur)
 	m.sidebar.setServices(services)
 	m, _ = applySize(m, 120, 40)
 	return m
@@ -75,9 +87,9 @@ func TestQuitKeys(t *testing.T) {
 
 func TestReadOnlyBlocksActions(t *testing.T) {
 	fake := &coretest.FakeDeployer{Services: sampleServices()}
-	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	factory := fakeFactory(fake)
 	cur := config.Context{Name: "production", Cloud: "aws", Cluster: "prod-cluster", Writable: false}
-	ro := New(factory, []config.Context{cur}, cur)
+	ro := New(context.Background(), factory, []config.Context{cur}, cur)
 	ro.sidebar.setServices(sampleServices())
 	ro, _ = applySize(ro, 120, 40)
 	for _, key := range []string{"d", "s", "R"} {
@@ -89,9 +101,9 @@ func TestReadOnlyBlocksActions(t *testing.T) {
 
 func TestRunActionCmdRejectsDeploy(t *testing.T) {
 	fake := &coretest.FakeDeployer{Services: sampleServices()}
-	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	factory := fakeFactory(fake)
 	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
-	m := New(factory, []config.Context{cur}, cur)
+	m := New(context.Background(), factory, []config.Context{cur}, cur)
 	m.sidebar.setServices(sampleServices())
 	m, _ = applySize(m, 120, 40)
 	m.action.open(actionDeploy, "svc")
@@ -162,18 +174,18 @@ func TestMouseWheelScrollsPanelWhenFocused(t *testing.T) {
 func multiCtxModel(t *testing.T) Model {
 	t.Helper()
 	fake := &coretest.FakeDeployer{Services: sampleServices()}
-	factory := func(c config.Context) (core.Deployer, error) {
+	factory := providers.ProviderFactory(func(_ context.Context, c config.Context) (providers.Provider, error) {
 		if c.Cloud != "aws" {
 			return nil, providers.ErrProviderNotImplemented
 		}
-		return fake, nil
-	}
+		return fakeProvider{dep: fake}, nil
+	})
 	ctxs := []config.Context{
 		{Name: "nao-dev", Cloud: "aws", Cluster: "c1", Writable: true},
 		{Name: "nao-prod", Cloud: "aws", Cluster: "c2", Writable: false},
 		{Name: "acme-staging", Cloud: "gcp", Cluster: "c3", Writable: true},
 	}
-	m := New(factory, ctxs, ctxs[0])
+	m := New(context.Background(), factory, ctxs, ctxs[0])
 	m.sidebar.setServices(sampleServices())
 	m, _ = applySize(m, 120, 40)
 	return m
@@ -301,9 +313,9 @@ func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 		Services:        sampleServices(),
 		DeploymentValue: core.Deployment{Rollout: core.RolloutCompleted, Running: 2, Desired: 2},
 	}
-	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	factory := fakeFactory(fake)
 	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
-	m := New(factory, []config.Context{cur}, cur)
+	m := New(context.Background(), factory, []config.Context{cur}, cur)
 	m.sidebar.setServices(fake.Services)
 	m, _ = applySize(m, 120, 40)
 
@@ -417,9 +429,9 @@ func TestClickDetailsScaleAndRollbackButtons(t *testing.T) {
 // TestReadOnlyDetailsButtonsNoOp verifica que en read-only, el click en la fila de botones no abre acción.
 func TestReadOnlyDetailsButtonsNoOp(t *testing.T) {
 	fake := &coretest.FakeDeployer{Services: sampleServices()}
-	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	factory := fakeFactory(fake)
 	cur := config.Context{Name: "prod", Cloud: "aws", Cluster: "c", Writable: false}
-	m := New(factory, []config.Context{cur}, cur)
+	m := New(context.Background(), factory, []config.Context{cur}, cur)
 	m.sidebar.setServices(sampleServices())
 	m, _ = applySize(m, 120, 40)
 	// click donde estaría la fila de botones; en read-only no hay botones → no-op
