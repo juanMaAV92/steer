@@ -23,8 +23,6 @@ type focus int
 const (
 	focusSidebar focus = iota
 	focusPanel
-	focusAction
-	focusContextPicker
 )
 
 // Constantes de geometría para el routing de mouse.
@@ -67,8 +65,7 @@ type Model struct {
 	sidebar sidebar
 	tabs    panel.Tabs
 	events  panel.Events
-	action  action
-	picker  contextPicker
+	overlay overlay
 
 	focus   focus
 	loading bool
@@ -229,28 +226,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if msg.Type == tea.KeyCtrlC {
+			return m, tea.Quit
+		}
+		if m.overlay != nil {
+			return m.routeOverlay(msg)
+		}
 		return m.handleKey(msg)
 
 	case tea.MouseMsg:
-		// mientras el picker está abierto, el overlay captura el mouse (click-to-select)
-		if m.focus == focusContextPicker {
-			return m.handlePickerMouse(msg)
+		if m.overlay != nil {
+			return m.routeOverlay(msg)
 		}
 		return m, m.handleMouse(msg)
 	}
 	return m, nil
 }
 
-// handlePickerMouse maneja el mouse mientras el selector de contexto está abierto:
-// un click izquierdo sobre una fila la conmuta; cualquier otro evento se traga
-// (no cierra el overlay ni muta el estado por debajo).
-func (m Model) handlePickerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-		// el picker se renderiza tras la barra superior: línea de picker = Y - topBarHeight
-		if idx, ok := m.picker.indexAtLine(msg.Y - topBarHeight); ok {
-			m.picker.selectIndex(idx)
-			return m.applyContextSwitch()
+// routeOverlay entrega el evento al overlay activo y ejecuta su resultado.
+func (m Model) routeOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
+	done, result := m.overlay.Update(msg)
+	if done {
+		m.overlay = nil
+		m.focus = focusSidebar
+	}
+	if result != nil {
+		return m.handleOverlayResult(result)
+	}
+	return m, nil
+}
+
+// handleOverlayResult ejecuta la elección hecha en un overlay.
+// NOTA: m.overlay ya fue puesto a nil por routeOverlay antes de llegar aquí.
+func (m Model) handleOverlayResult(res tea.Msg) (tea.Model, tea.Cmd) {
+	switch r := res.(type) {
+	case contextChosenMsg:
+		return m.applyContextSwitch(r.ctx)
+	case actionConfirmedMsg:
+		if r.kind == actionDeploy {
+			// flujo de deploy en vivo (idéntico al actual del handler de Enter)
+			m.focus = focusPanel
+			m.tabs.Active = panel.TabEvents
+			m.events.Reset()
+			m.deploy = deployState{Active: true, Service: r.service}
+			return m, startDeployCmd(m.runCtx, m.dep, r.service, r.input)
 		}
+		return m, m.runActionCmd(r.kind, r.service, r.input)
 	}
 	return m, nil
 }
@@ -258,14 +279,6 @@ func (m Model) handlePickerMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // handleMouse enruta los eventos de mouse a la zona correcta:
 // rueda → scroll del panel de eventos, click izquierdo → selección en sidebar o pestaña en panel.
 func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
-	// con el modal de acción abierto, cualquier click lo cancela (captura el mouse)
-	if m.focus == focusAction {
-		if msg.Action == tea.MouseActionPress {
-			m.action.close()
-			m.focus = focusSidebar
-		}
-		return nil
-	}
 	// rueda: scroll en el panel de eventos si el cursor está sobre el panel
 	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
 		if msg.X > m.sidebarW {
@@ -279,9 +292,8 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	}
 	// click en la barra superior (contexto) → abrir el selector de contexto
 	if msg.Y < topBarHeight {
-		m.picker = newContextPicker(m.contexts, m.current.Name)
+		m.overlay = newPickerOverlay(m.keys, m.contexts, m.current.Name)
 		m.notice = ""
-		m.focus = focusContextPicker
 		return nil
 	}
 	// click en la zona del sidebar
@@ -320,54 +332,6 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// foco en overlay del selector de contexto: captura el input antes del switch global
-	if m.focus == focusContextPicker {
-		switch {
-		case msg.Type == tea.KeyCtrlC:
-			return m, tea.Quit
-		case key.Matches(msg, m.keys.Esc):
-			m.focus = focusSidebar
-			return m, nil
-		case key.Matches(msg, m.keys.Enter):
-			return m.applyContextSwitch()
-		case key.Matches(msg, m.keys.Down):
-			m.picker.moveDown()
-		case key.Matches(msg, m.keys.Up):
-			m.picker.moveUp()
-		}
-		return m, nil
-	}
-
-	// foco en overlay de acción: captura el input
-	if m.focus == focusAction {
-		switch {
-		case key.Matches(msg, m.keys.Quit) && msg.Type == tea.KeyCtrlC:
-			return m, tea.Quit
-		case key.Matches(msg, m.keys.Esc):
-			m.action.close()
-			m.focus = focusSidebar
-			return m, nil
-		case key.Matches(msg, m.keys.Enter):
-			if !m.action.ready() {
-				return m, nil
-			}
-			if m.action.kind == actionDeploy {
-				// el flujo de deploy en vivo se arranca directamente, no via runActionCmd
-				svc, tag := m.action.service, m.action.input
-				m.action.close()
-				m.focus = focusPanel
-				m.tabs.Active = panel.TabEvents
-				m.events.Reset()
-				m.deploy = deployState{Active: true, Service: svc}
-				return m, startDeployCmd(m.runCtx, m.dep, svc, tag)
-			}
-			return m, m.runActionCmd()
-		default:
-			m.action.typeKey(msg)
-			return m, nil
-		}
-	}
-
 	switch {
 	case key.Matches(msg, m.keys.Quit):
 		return m, tea.Quit
@@ -385,9 +349,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.loadServicesCmd()
 	case key.Matches(msg, m.keys.Context):
 		// abre el overlay de selección de contexto
-		m.picker = newContextPicker(m.contexts, m.current.Name)
+		m.overlay = newPickerOverlay(m.keys, m.contexts, m.current.Name)
 		m.notice = ""
-		m.focus = focusContextPicker
 		return m, nil
 	case key.Matches(msg, m.keys.Deploy), key.Matches(msg, m.keys.Scale), key.Matches(msg, m.keys.Rollback):
 		return m.openAction(msg)
@@ -422,12 +385,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // applyContextSwitch conmuta al contexto seleccionado en el picker.
 // Si el provider no está implementado o la fábrica falla, muestra un notice y no cambia.
-func (m Model) applyContextSwitch() (tea.Model, tea.Cmd) {
-	sel, ok := m.picker.selected()
-	if !ok {
-		m.focus = focusSidebar
-		return m, nil
-	}
+func (m Model) applyContextSwitch(sel config.Context) (tea.Model, tea.Cmd) {
 	if sel.Name == m.current.Name {
 		m.focus = focusSidebar
 		return m, nil
@@ -477,38 +435,34 @@ func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch {
 	case key.Matches(msg, m.keys.Deploy):
-		m.action.open(actionDeploy, s.Name)
+		m.overlay = newActionOverlay(m.keys, actionDeploy, s.Name)
 	case key.Matches(msg, m.keys.Scale):
-		m.action.open(actionScale, s.Name)
+		m.overlay = newActionOverlay(m.keys, actionScale, s.Name)
 	case key.Matches(msg, m.keys.Rollback):
-		m.action.open(actionRollback, s.Name)
+		m.overlay = newActionOverlay(m.keys, actionRollback, s.Name)
 	}
 	m.notice = ""
-	m.focus = focusAction
 	return m, nil
 }
 
-func (m *Model) runActionCmd() tea.Cmd {
-	a := m.action
+func (m *Model) runActionCmd(kind actionKind, service, input string) tea.Cmd {
 	dep := m.dep
 	ctx := m.runCtx
-	m.action.close()
-	m.focus = focusSidebar
 	return func() tea.Msg {
-		switch a.kind {
+		switch kind {
 		case actionRollback:
-			return actionDoneMsg{msg: "rolled back " + a.service, err: dep.Rollback(ctx, a.service)}
+			return actionDoneMsg{msg: "rolled back " + service, err: dep.Rollback(ctx, service)}
 		case actionDeploy:
 			// El deploy SIEMPRE va por startDeployCmd (flujo en vivo con eventos).
 			// Esta rama solo es alcanzable si un refactor rompe el guard de Enter.
 			return actionDoneMsg{err: fmt.Errorf("internal: deploy must go through startDeployCmd")}
 		case actionScale:
-			n, convErr := strconv.Atoi(a.input)
+			n, convErr := strconv.Atoi(input)
 			if convErr != nil {
 				return actionDoneMsg{err: convErr}
 			}
-			return actionDoneMsg{msg: "scaled " + a.service + " to " + a.input,
-				err: dep.Scale(ctx, a.service, n)}
+			return actionDoneMsg{msg: "scaled " + service + " to " + input,
+				err: dep.Scale(ctx, service, n)}
 		}
 		return actionDoneMsg{}
 	}
@@ -532,9 +486,8 @@ func (m *Model) openActionKind(kind actionKind) {
 	if !ok {
 		return
 	}
-	m.action.open(kind, s.Name)
+	m.overlay = newActionOverlay(m.keys, kind, s.Name)
 	m.notice = ""
-	m.focus = focusAction
 }
 
 func (m Model) View() string {
@@ -543,14 +496,8 @@ func (m Model) View() string {
 	}
 	top := topBar(m.current.Cloud, m.current.Name, m.current.Cluster, m.current.Writable)
 
-	// overlay del selector de contexto: reemplaza el cuerpo principal
-	if m.focus == focusContextPicker {
-		return top + "\n" + m.picker.view() + "\n" + bottomBar(m.keys.shortHelp(), m.notice, m.status)
-	}
-
-	// modal de acción: retorna antes de construir el layout (no renderizar para tirar)
-	if m.focus == focusAction {
-		return top + "\n" + m.action.modalView(m.width, m.bodyH) + "\n" +
+	if m.overlay != nil {
+		return top + "\n" + m.overlay.View(m.width, m.bodyH) + "\n" +
 			bottomBar(m.keys.shortHelp(), m.notice, m.status)
 	}
 

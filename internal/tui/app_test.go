@@ -94,7 +94,7 @@ func TestReadOnlyBlocksActions(t *testing.T) {
 	ro, _ = applySize(ro, 120, 40)
 	for _, key := range []string{"d", "s", "R"} {
 		m := mustUpdate(t, ro, keyMsg(key))
-		require.NotEqual(t, focusAction, m.focus)
+		require.Nil(t, m.overlay)
 		require.NotEmpty(t, m.notice)
 	}
 }
@@ -106,9 +106,7 @@ func TestRunActionCmdRejectsDeploy(t *testing.T) {
 	m := New(context.Background(), factory, []config.Context{cur}, cur)
 	m.sidebar.setServices(sampleServices())
 	m, _ = applySize(m, 120, 40)
-	m.action.open(actionDeploy, "svc")
-	m.action.input = "v1"
-	cmd := m.runActionCmd()
+	cmd := m.runActionCmd(actionDeploy, "svc", "v1")
 	msg := cmd().(actionDoneMsg)
 	require.Error(t, msg.err)
 	require.Empty(t, fake.DeployCalls) // jamás llama a Deploy sin streaming
@@ -194,7 +192,7 @@ func multiCtxModel(t *testing.T) Model {
 func TestOpenContextPicker(t *testing.T) {
 	m := multiCtxModel(t)
 	m = mustUpdate(t, m, keyMsg("c"))
-	require.Equal(t, focusContextPicker, m.focus)
+	require.IsType(t, &pickerOverlay{}, m.overlay)
 }
 
 // Un click izquierdo en la barra superior (Y=0) abre el selector de contexto.
@@ -202,7 +200,7 @@ func TestClickTopBarOpensContextPicker(t *testing.T) {
 	m := multiCtxModel(t)
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 5, Y: 0}
 	m = mustUpdate(t, m, click)
-	require.Equal(t, focusContextPicker, m.focus)
+	require.IsType(t, &pickerOverlay{}, m.overlay)
 }
 
 // Click sobre la pestaña "Events" del panel la activa. Anclado al render:
@@ -236,7 +234,7 @@ func TestClickPanelTabSwitches(t *testing.T) {
 func TestClickPickerRowSwitchesContext(t *testing.T) {
 	m := multiCtxModel(t)
 	m = mustUpdate(t, m, keyMsg("c")) // abrir picker
-	require.Equal(t, focusContextPicker, m.focus)
+	require.IsType(t, &pickerOverlay{}, m.overlay)
 
 	out := m.View()
 	clickY := -1
@@ -257,7 +255,7 @@ func TestClickPickerRowSwitchesContext(t *testing.T) {
 func TestSwitchToWritableContextReloads(t *testing.T) {
 	m := multiCtxModel(t)
 	m = mustUpdate(t, m, keyMsg("c"))
-	m.picker.selectIndex(1) // nao-prod (read-only)
+	m.overlay.(*pickerOverlay).picker.selectIndex(1) // nao-prod (read-only)
 	updated, cmd := m.Update(keyMsg("enter"))
 	m = updated.(Model)
 	require.Equal(t, "nao-prod", m.current.Name)
@@ -271,9 +269,10 @@ func TestSwitchToNotImplementedShowsNotice(t *testing.T) {
 	prev := m.current.Name
 	m = mustUpdate(t, m, keyMsg("c"))
 	// localizar acme-staging (gcp) por nombre
-	for i, c := range m.picker.contexts {
+	picker := m.overlay.(*pickerOverlay)
+	for i, c := range picker.picker.contexts {
 		if c.Name == "acme-staging" {
-			m.picker.selectIndex(i)
+			picker.picker.selectIndex(i)
 		}
 	}
 	m = mustUpdate(t, m, keyMsg("enter"))
@@ -288,10 +287,11 @@ func TestSwitchDuringDeployStopsPollLoop(t *testing.T) {
 
 	// abrir picker y conmutar a otro contexto AWS distinto del actual (nao-dev)
 	m = mustUpdate(t, m, keyMsg("c"))
-	require.Equal(t, focusContextPicker, m.focus)
-	for i, c := range m.picker.contexts {
+	require.IsType(t, &pickerOverlay{}, m.overlay)
+	picker := m.overlay.(*pickerOverlay)
+	for i, c := range picker.picker.contexts {
 		if c.Cloud == "aws" && c.Name != m.current.Name {
-			m.picker.selectIndex(i)
+			picker.picker.selectIndex(i)
 			break
 		}
 	}
@@ -321,7 +321,7 @@ func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 
 	// abrir deploy del 1er servicio (api) y teclear tag
 	m = mustUpdate(t, m, keyMsg("d"))
-	require.Equal(t, focusAction, m.focus)
+	require.IsType(t, &actionOverlay{}, m.overlay)
 	for _, r := range "v2" {
 		m = mustUpdate(t, m, keyMsg(string(r)))
 	}
@@ -363,19 +363,18 @@ func TestClickDetailsDeployButton(t *testing.T) {
 	require.GreaterOrEqual(t, clickX, 0, "no se encontró el botón Deploy en el render")
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY}
 	m = mustUpdate(t, m, click)
-	require.Equal(t, focusAction, m.focus)
-	require.Equal(t, actionDeploy, m.action.kind)
+	require.IsType(t, &actionOverlay{}, m.overlay)
+	require.Equal(t, actionDeploy, m.overlay.(*actionOverlay).act.kind)
 }
 
 // TestClickCancelsActionModal verifica que con el modal abierto, cualquier click lo cancela.
 func TestClickCancelsActionModal(t *testing.T) {
 	m := newTestModel(sampleServices())
 	m = mustUpdate(t, m, keyMsg("d")) // abre deploy
-	require.Equal(t, focusAction, m.focus)
+	require.IsType(t, &actionOverlay{}, m.overlay)
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 1, Y: 1}
 	m = mustUpdate(t, m, click)
-	require.NotEqual(t, focusAction, m.focus) // cerrado
-	require.False(t, m.action.active)
+	require.Nil(t, m.overlay) // cerrado
 }
 
 // TestSingleColumnDetailsClickNoMisfire verifica que en modo de una columna, un click en el borde
@@ -390,7 +389,7 @@ func TestSingleColumnDetailsClickNoMisfire(t *testing.T) {
 	// en modo dos columnas, pero NO debe abrir el modal en modo una columna.
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 78, Y: 11}
 	m = mustUpdate(t, m, click)
-	require.NotEqual(t, focusAction, m.focus)
+	require.Nil(t, m.overlay)
 }
 
 // TestClickDetailsScaleAndRollbackButtons verifica que un click en los botones Scale y Rollback
@@ -420,8 +419,8 @@ func TestClickDetailsScaleAndRollbackButtons(t *testing.T) {
 			require.GreaterOrEqual(t, clickX, 0, "no se encontró "+tc.label)
 			click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY}
 			m = mustUpdate(t, m, click)
-			require.Equal(t, focusAction, m.focus)
-			require.Equal(t, tc.kind, m.action.kind)
+			require.IsType(t, &actionOverlay{}, m.overlay)
+			require.Equal(t, tc.kind, m.overlay.(*actionOverlay).act.kind)
 		})
 	}
 }
@@ -437,7 +436,7 @@ func TestReadOnlyDetailsButtonsNoOp(t *testing.T) {
 	// click donde estaría la fila de botones; en read-only no hay botones → no-op
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: m.sidebarW + 5, Y: 11}
 	m = mustUpdate(t, m, click)
-	require.NotEqual(t, focusAction, m.focus)
+	require.Nil(t, m.overlay)
 }
 
 func TestDeployStateReset(t *testing.T) {
