@@ -272,10 +272,7 @@ func TestSwitchToNotImplementedShowsNotice(t *testing.T) {
 func TestSwitchDuringDeployStopsPollLoop(t *testing.T) {
 	m := multiCtxModel(t)
 	// simular un deploy activo: estado que deja el handler de enter tras iniciar el watch
-	m.deployActive = true
-	m.deployDone = false
-	m.deployService = "old-svc"
-	m.deployLastID = "ev-1"
+	m.deploy = deployState{Active: true, Done: false, Service: "old-svc", LastID: "ev-1"}
 
 	// abrir picker y conmutar a otro contexto AWS distinto del actual (nao-dev)
 	m = mustUpdate(t, m, keyMsg("c"))
@@ -290,9 +287,9 @@ func TestSwitchDuringDeployStopsPollLoop(t *testing.T) {
 	m = updated.(Model)
 
 	// el estado de watch debe estar completamente limpio tras el switch
-	require.False(t, m.deployActive, "deployActive debe ser false tras el switch")
-	require.Empty(t, m.deployService, "deployService debe vaciarse tras el switch")
-	require.Empty(t, m.deployLastID, "deployLastID debe vaciarse tras el switch")
+	require.False(t, m.deploy.Active, "deployActive debe ser false tras el switch")
+	require.Empty(t, m.deploy.Service, "deployService debe vaciarse tras el switch")
+	require.Empty(t, m.deploy.LastID, "deployLastID debe vaciarse tras el switch")
 
 	// un tick de poll no debe reprogramar nada (loop huerfano eliminado)
 	_, cmd := m.Update(deployPollTickMsg{})
@@ -333,7 +330,7 @@ func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 	poll := cmd().(deployPollMsg)
 	updated, _ = m.Update(poll)
 	m = updated.(Model)
-	require.True(t, m.deployDone)
+	require.True(t, m.deploy.Done)
 	require.Contains(t, m.events.View(), "completed")
 }
 
@@ -429,4 +426,10 @@ func TestReadOnlyDetailsButtonsNoOp(t *testing.T) {
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: m.sidebarW + 5, Y: 11}
 	m = mustUpdate(t, m, click)
 	require.NotEqual(t, focusAction, m.focus)
+}
+
+func TestDeployStateReset(t *testing.T) {
+	d := deployState{Active: true, Done: true, Service: "svc", LastID: "id"}
+	d.Reset()
+	require.Equal(t, deployState{}, d)
 }

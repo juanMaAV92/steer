@@ -45,6 +45,16 @@ const (
 	actionScale
 )
 
+// deployState agrupa el estado del watch de deploy en vivo; Reset lo limpia entero.
+type deployState struct {
+	Active  bool
+	Done    bool
+	Service string
+	LastID  string
+}
+
+func (d *deployState) Reset() { *d = deployState{} }
+
 // Model es el estado raíz de la TUI (patrón Elm de Bubble Tea).
 type Model struct {
 	factory  providers.DeployerFactory
@@ -66,12 +76,10 @@ type Model struct {
 	status  string
 	err     error
 
-	width, height            int
-	sidebarW, panelW, bodyH  int
-	singleColumn             bool
-	deployActive, deployDone bool
-	deployLastID             string
-	deployService            string
+	width, height           int
+	sidebarW, panelW, bodyH int
+	singleColumn            bool
+	deploy                  deployState
 }
 
 func New(factory providers.DeployerFactory, contexts []config.Context, current config.Context) Model {
@@ -168,44 +176,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			m.events.AppendLine(render.Danger("error: " + msg.err.Error()))
-			m.deployDone = true
+			m.deploy.Done = true
 			return m, m.loadServicesCmd()
 		}
-		m.deployLastID = msg.lastID
-		return m, deployPollCmd(m.dep, m.current.Cluster, m.deployService, m.deployLastID)
+		m.deploy.LastID = msg.lastID
+		return m, deployPollCmd(m.dep, m.current.Cluster, m.deploy.Service, m.deploy.LastID)
 
 	case deployPollMsg:
 		if msg.err != nil {
 			m.events.AppendLine(render.Danger("error: " + msg.err.Error()))
-			m.deployDone = true
+			m.deploy.Done = true
 			return m, m.loadServicesCmd()
 		}
 		for i := len(msg.events) - 1; i >= 0; i-- {
 			e := msg.events[i]
 			m.events.AppendLine(render.Dim("[" + e.At.Format("15:04:05") + "] " + e.Message))
 		}
-		m.deployLastID = msg.lastID
+		m.deploy.LastID = msg.lastID
 		m.events.SetStatusLine("Rollout: " + render.Rollout(string(msg.rollout)) +
 			" | Running: " + strconv.Itoa(msg.running) +
 			" | Pending: " + strconv.Itoa(msg.pending) +
 			" | Desired: " + strconv.Itoa(msg.desired))
 		if msg.done {
 			m.events.AppendLine(render.Success("✓ deployment completed"))
-			m.deployActive = false
-			m.deployDone = true
+			m.deploy.Active = false
+			m.deploy.Done = true
 			return m, m.loadServicesCmd()
 		}
 		if msg.failed {
 			m.events.AppendLine(render.Danger("✗ deployment failed"))
-			m.deployActive = false
-			m.deployDone = true
+			m.deploy.Active = false
+			m.deploy.Done = true
 			return m, m.loadServicesCmd()
 		}
 		return m, deployTickCmd()
 
 	case deployPollTickMsg:
-		if m.deployActive && !m.deployDone {
-			return m, deployPollCmd(m.dep, m.current.Cluster, m.deployService, m.deployLastID)
+		if m.deploy.Active && !m.deploy.Done {
+			return m, deployPollCmd(m.dep, m.current.Cluster, m.deploy.Service, m.deploy.LastID)
 		}
 		return m, nil
 
@@ -338,8 +346,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.focus = focusPanel
 				m.tabs.Active = panel.TabEvents
 				m.events.Reset()
-				m.deployActive, m.deployDone = true, false
-				m.deployService = svc
+				m.deploy = deployState{Active: true, Service: svc}
 				return m, startDeployCmd(m.dep, m.current.Cluster, svc, tag)
 			}
 			return m, m.runActionCmd()
@@ -434,10 +441,7 @@ func (m Model) applyContextSwitch() (tea.Model, tea.Cmd) {
 	m.focus = focusSidebar
 	// reiniciar el estado de watch de deploy para evitar que el loop de poll
 	// siga disparándose contra el nuevo deployer con el servicio anterior
-	m.deployActive = false
-	m.deployDone = false
-	m.deployService = ""
-	m.deployLastID = ""
+	m.deploy.Reset()
 	m.events.Reset()
 	m.tabs.Active = panel.TabDetails
 	return m, m.loadServicesCmd()
