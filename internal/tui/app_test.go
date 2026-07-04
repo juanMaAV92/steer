@@ -87,6 +87,21 @@ func TestReadOnlyBlocksActions(t *testing.T) {
 	}
 }
 
+func TestRunActionCmdRejectsDeploy(t *testing.T) {
+	fake := &coretest.FakeDeployer{Services: sampleServices()}
+	factory := func(_ config.Context) (core.Deployer, error) { return fake, nil }
+	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
+	m := New(factory, []config.Context{cur}, cur)
+	m.sidebar.setServices(sampleServices())
+	m, _ = applySize(m, 120, 40)
+	m.action.open(actionDeploy, "svc")
+	m.action.input = "v1"
+	cmd := m.runActionCmd()
+	msg := cmd().(actionDoneMsg)
+	require.Error(t, msg.err)
+	require.Empty(t, fake.DeployCalls) // jamás llama a Deploy sin streaming
+}
+
 func TestViewRendersWithoutPanic(t *testing.T) {
 	m := newTestModel(sampleServices())
 	require.NotEmpty(t, m.View())

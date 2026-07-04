@@ -4,6 +4,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -475,9 +476,9 @@ func (m *Model) runActionCmd() tea.Cmd {
 		case actionRollback:
 			return actionDoneMsg{msg: "rolled back " + a.service, err: dep.Rollback(ctx, cluster, a.service)}
 		case actionDeploy:
-			// inalcanzable: el deploy se inicia desde el handler de Enter (startDeployCmd), no aquí
-			return actionDoneMsg{msg: "deployed " + a.service + " -> " + a.input,
-				err: dep.Deploy(ctx, cluster, a.service, a.input, nil)}
+			// El deploy SIEMPRE va por startDeployCmd (flujo en vivo con eventos).
+			// Esta rama solo es alcanzable si un refactor rompe el guard de Enter.
+			return actionDoneMsg{err: fmt.Errorf("internal: deploy must go through startDeployCmd")}
 		case actionScale:
 			n, convErr := strconv.Atoi(a.input)
 			if convErr != nil {
