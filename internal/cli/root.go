@@ -54,14 +54,14 @@ func NewRootCmd(version string) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		if err := cfg.Validate(); err != nil {
+			return err
+		}
 		if contextName == "" {
 			contextName = os.Getenv("STEER_CONTEXT")
 		}
 		cur, err := cfg.ResolveContext(contextName)
 		if err != nil {
-			return err
-		}
-		if err := cur.Validate(); err != nil {
 			return err
 		}
 		app := &AppContext{Ctx: cur, Config: cfg, Factory: factory}

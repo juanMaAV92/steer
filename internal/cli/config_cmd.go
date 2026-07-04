@@ -62,15 +62,10 @@ func newConfigValidateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := cfg.Validate(); err != nil {
+				return err
+			}
 			all := cfg.AllContexts()
-			if len(all) == 0 {
-				return fmt.Errorf("config %s has no contexts", path)
-			}
-			for _, c := range all {
-				if err := c.Validate(); err != nil {
-					return err
-				}
-			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "ok: %s (%d contexts)\n", path, len(all))
 			return nil
 		},
