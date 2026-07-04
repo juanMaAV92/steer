@@ -111,8 +111,10 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) loadServicesCmd() tea.Cmd {
+	ctx := m.runCtx
+	dep := m.dep
 	return func() tea.Msg {
-		s, err := m.dep.ListServices(context.Background())
+		s, err := dep.ListServices(ctx)
 		return servicesMsg{services: s, err: err}
 	}
 }
@@ -186,7 +188,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.loadServicesCmd()
 		}
 		m.deploy.LastID = msg.lastID
-		return m, deployPollCmd(m.dep, m.deploy.Service, m.deploy.LastID)
+		return m, deployPollCmd(m.runCtx, m.dep, m.deploy.Service, m.deploy.LastID)
 
 	case deployPollMsg:
 		if msg.err != nil {
@@ -219,7 +221,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case deployPollTickMsg:
 		if m.deploy.Active && !m.deploy.Done {
-			return m, deployPollCmd(m.dep, m.deploy.Service, m.deploy.LastID)
+			return m, deployPollCmd(m.runCtx, m.dep, m.deploy.Service, m.deploy.LastID)
 		}
 		return m, nil
 
@@ -353,7 +355,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.tabs.Active = panel.TabEvents
 				m.events.Reset()
 				m.deploy = deployState{Active: true, Service: svc}
-				return m, startDeployCmd(m.dep, svc, tag)
+				return m, startDeployCmd(m.runCtx, m.dep, svc, tag)
 			}
 			return m, m.runActionCmd()
 		default:
@@ -485,10 +487,10 @@ func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) runActionCmd() tea.Cmd {
 	a := m.action
 	dep := m.dep
+	ctx := m.runCtx
 	m.action.close()
 	m.focus = focusSidebar
 	return func() tea.Msg {
-		ctx := context.Background()
 		switch a.kind {
 		case actionRollback:
 			return actionDoneMsg{msg: "rolled back " + a.service, err: dep.Rollback(ctx, a.service)}

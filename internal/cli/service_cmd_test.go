@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -125,4 +126,13 @@ func TestRollbackCommand(t *testing.T) {
 	_, err := runRoot(t, "service", "rollback", "-s", "catalog", "-y")
 	require.NoError(t, err)
 	require.Equal(t, []string{"catalog"}, fake.RollbackCalls)
+}
+
+func TestWatchRolloutStopsOnCancel(t *testing.T) {
+	fake := &coretest.FakeDeployer{DeploymentValue: core.Deployment{Rollout: core.RolloutInProgress}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var buf bytes.Buffer
+	err := watchRollout(ctx, &buf, fake, "svc", 1)
+	require.ErrorIs(t, err, context.Canceled)
 }

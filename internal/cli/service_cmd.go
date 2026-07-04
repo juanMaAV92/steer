@@ -95,7 +95,12 @@ func newServiceStatusCmd() *cobra.Command {
 				}
 				_, _ = fmt.Fprint(out, frame)
 				prevLines = strings.Count(frame, "\n")
-				time.Sleep(time.Duration(interval) * time.Second)
+				select {
+				case <-cmd.Context().Done():
+					_, _ = fmt.Fprintln(out)
+					return cmd.Context().Err()
+				case <-time.After(time.Duration(interval) * time.Second):
+				}
 			}
 		},
 	}
@@ -236,7 +241,12 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, service
 			_, _ = fmt.Fprintln(out)
 			return fmt.Errorf("deployment failed for %q", service)
 		}
-		time.Sleep(time.Duration(interval) * time.Second)
+		select {
+		case <-ctx.Done():
+			_, _ = fmt.Fprintln(out)
+			return ctx.Err()
+		case <-time.After(time.Duration(interval) * time.Second):
+		}
 	}
 }
 

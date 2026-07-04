@@ -16,9 +16,8 @@ func deployTickCmd() tea.Cmd {
 	return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return deployPollTickMsg{} })
 }
 
-func startDeployCmd(dep core.Deployer, service, tag string) tea.Cmd {
+func startDeployCmd(ctx context.Context, dep core.Deployer, service, tag string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
 		baseline := ""
 		if evs, err := dep.ServiceEvents(ctx, service); err == nil && len(evs) > 0 {
 			baseline = evs[0].ID
@@ -29,9 +28,8 @@ func startDeployCmd(dep core.Deployer, service, tag string) tea.Cmd {
 	}
 }
 
-func deployPollCmd(dep core.Deployer, service, lastID string) tea.Cmd {
+func deployPollCmd(ctx context.Context, dep core.Deployer, service, lastID string) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
 		var fresh []core.ServiceEvent
 		newLast := lastID
 		if evs, err := dep.ServiceEvents(ctx, service); err == nil {
