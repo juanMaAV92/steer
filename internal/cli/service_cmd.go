@@ -125,6 +125,9 @@ func newServiceDeployCmd() *cobra.Command {
 			if err := app.RequireWritable(); err != nil {
 				return err
 			}
+			if yes && (service == "" || tag == "") {
+				return fmt.Errorf("non-interactive deploy (-y) requires --service and --tag")
+			}
 			dep, cluster, err := newDeployerFn(app)
 			if err != nil {
 				return err
@@ -267,6 +270,9 @@ func newServiceScaleCmd() *cobra.Command {
 			if service == "" {
 				return fmt.Errorf("--service is required")
 			}
+			if !cmd.Flags().Changed("count") {
+				return fmt.Errorf("--count is required (refusing to default to 1)")
+			}
 			app := FromContext(cmd.Context())
 			if err := app.RequireWritable(); err != nil {
 				return err
@@ -293,7 +299,7 @@ func newServiceScaleCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&service, "service", "s", "", "service short name")
-	cmd.Flags().IntVarP(&count, "count", "c", 1, "desired task count")
+	cmd.Flags().IntVarP(&count, "count", "c", 0, "desired task count (required)")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip confirmation")
 	return cmd
 }

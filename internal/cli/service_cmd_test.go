@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/juanMaAV92/steer/internal/core"
@@ -15,6 +17,14 @@ func withFakeDeployer(t *testing.T, fake core.Deployer) {
 		return fake, "stg-cluster", nil
 	}
 	t.Cleanup(func() { newDeployerFn = prev })
+}
+
+// runRootWithFake combina runRoot con un FakeDeployer neutro, para tests que
+// no necesitan asertar sobre las llamadas al deployer.
+func runRootWithFake(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	withFakeDeployer(t, &coretest.FakeDeployer{})
+	return runRoot(t, args...)
 }
 
 func TestServiceStatusListsServices(t *testing.T) {
@@ -49,7 +59,32 @@ func TestDeployNonInteractive(t *testing.T) {
 func TestDeployRequiresServiceAndTag(t *testing.T) {
 	withFakeDeployer(t, &coretest.FakeDeployer{})
 	_, err := runRoot(t, "service", "deploy", "-y")
-	require.Error(t, err)
+	require.ErrorContains(t, err, "--service")
+}
+
+func TestScaleRequiresCount(t *testing.T) {
+	// sin --count debe fallar, aunque haya -y
+	_, err := runRootWithFake(t, "service", "scale", "-s", "web", "-y")
+	require.ErrorContains(t, err, "--count")
+}
+
+func TestDeployNonInteractiveRequiresServiceAndTag(t *testing.T) {
+	_, err := runRootWithFake(t, "service", "deploy", "-y")
+	require.ErrorContains(t, err, "--service")
+}
+
+func TestSteerContextEnvVar(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	multi := "[contexts.dev]\ncloud=\"aws\"\nprofile=\"dev\"\ncluster=\"dev-cluster\"\nwritable=true\n" +
+		"[contexts.prod]\ncloud=\"aws\"\nprofile=\"prod\"\ncluster=\"prod-cluster\"\nwritable=true\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "steer.toml"), []byte(multi), 0o600))
+
+	t.Setenv("STEER_CONTEXT", "dev")
+	// resolver sin --context debe usar STEER_CONTEXT (config de test con contexto "dev")
+	out, err := runRootWithFake(t, "service", "status")
+	require.NoError(t, err)
+	_ = out
 }
 
 func TestDeployWatchFollowsRollout(t *testing.T) {

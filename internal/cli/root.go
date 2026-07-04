@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"os"
 
 	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/providers"
@@ -29,8 +30,9 @@ func NewRootCmd(version string) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.PersistentFlags().StringVar(&contextName, "context", "", "target context (default: default_context)")
+	root.PersistentFlags().StringVar(&contextName, "context", "", "target context (default: STEER_CONTEXT or default_context)")
 	root.PersistentFlags().StringVar(&contextName, "env", "", "alias of --context")
+	_ = root.PersistentFlags().MarkDeprecated("env", "use --context instead")
 
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
 		factory := providers.NewDeployerFactory()
@@ -46,6 +48,9 @@ func NewRootCmd(version string) *cobra.Command {
 		cfg, err := config.Load(path)
 		if err != nil {
 			return err
+		}
+		if contextName == "" {
+			contextName = os.Getenv("STEER_CONTEXT")
 		}
 		cur, err := cfg.ResolveContext(contextName)
 		if err != nil {
