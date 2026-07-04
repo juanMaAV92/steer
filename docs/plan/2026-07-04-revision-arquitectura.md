@@ -44,8 +44,12 @@ generalizarlas ahora, con una sola capacidad que migrar, no tras copiar el patr�
 | # | Qué | Estado |
 |---|-----|--------|
 | 0 | Hotfix stripANSI | ✅ `b336f37` |
-| 1 | Ola de higiene (rollout tipado, rama muerta, deployState, flags CLI, lint CI) | plan: `2026-07-04-remediacion-arquitectura.md` T1–T5 |
-| 2 | Costuras (cluster al constructor, Provider bundle + ctx, Validate, IsError) | mismo plan, T6–T10 |
+| 1 | Ola de higiene (rollout tipado, rama muerta, deployState, flags CLI, lint CI) | ✅ mergeado (T1–T5, `2e8ceb0..f73b06e`) |
+| 2 | Costuras (cluster al constructor, Provider bundle + ctx, Validate, IsError) + cancelación cableada en la raíz | ✅ mergeado (T6–T10 + fix final, `5368a59..8827f4d`) |
 | 3 | Config anidada por capacidad | junto al hito registry |
-| 4 | Registry (spec revisado: `Provider.Registry()` en vez de `RegistryFactory`) | tras 1–2 |
+| 4 | Registry (spec revisado: `Provider.Registry()` en vez de `RegistryFactory`) | siguiente — revisar spec primero |
 | 5 | TUI: overlay + sidebar por secciones + registro de comandos | antes de ⌘k/IMAGES |
+
+Minors diferidos del ledger (cosméticos, triados en la revisión final): campo `ctx config.Context`
+en `aws/provider.go` (renombrar a `cfgCtx`), `HasPrefix("providers")` sin límite de palabra,
+assert duplicado en `rollout_test.go`, mensaje estático del guard `-y`.
