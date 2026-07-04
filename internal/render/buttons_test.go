@@ -39,3 +39,20 @@ func TestButtonAtColumnMultibyte(t *testing.T) {
 	require.Equal(t, 1, ButtonAtColumn(labels, 16))
 	_ = strings.TrimSpace
 }
+
+func TestLabelAtColumn(t *testing.T) {
+	labels := []string{"Details", "Events", "Logs"}
+	// pad=0, gap=2: Details(0-6) sep(7-8) Events(9-14) sep(15-16) Logs(17-20)
+	require.Equal(t, 0, LabelAtColumn(labels, 0, 2, 0))
+	require.Equal(t, 0, LabelAtColumn(labels, 0, 2, 6))
+	require.Equal(t, -1, LabelAtColumn(labels, 0, 2, 7))
+	require.Equal(t, 1, LabelAtColumn(labels, 0, 2, 9))
+	require.Equal(t, 2, LabelAtColumn(labels, 0, 2, 20))
+	require.Equal(t, -1, LabelAtColumn(labels, 0, 2, 21))
+	require.Equal(t, -1, LabelAtColumn(labels, 0, 2, -1))
+	// equivalencia con ButtonAtColumn (pad=4)
+	bl := []string{"Deploy (d)", "Scale (s)"}
+	for x := -1; x < 35; x++ {
+		require.Equal(t, ButtonAtColumn(bl, x), LabelAtColumn(bl, 4, 2, x), "x=%d", x)
+	}
+}
