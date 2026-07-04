@@ -22,3 +22,10 @@ func TestProviderFactoryRespectsContextCancel(t *testing.T) {
 	_, err := f(ctx, config.Context{Name: "x", Cloud: "aws", Profile: "p", Cluster: "c"})
 	require.Error(t, err) // la carga de sesión debe respetar el ctx cancelado
 }
+
+func TestIsImplemented(t *testing.T) {
+	require.True(t, IsImplemented("aws"))
+	require.False(t, IsImplemented("gcp"))
+	require.False(t, IsImplemented("azure"))
+	require.False(t, IsImplemented(""))
+}

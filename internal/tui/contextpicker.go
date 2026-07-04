@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/juanMaAV92/steer/internal/config"
+	"github.com/juanMaAV92/steer/internal/providers"
 	"github.com/juanMaAV92/steer/internal/render"
 )
 
@@ -103,7 +104,7 @@ func (p contextPicker) view() string {
 			name = render.Accent(name)
 		}
 		extra := ""
-		if c.Cloud != "aws" {
+		if !providers.IsImplemented(c.Cloud) {
 			extra = render.Dim("  (no impl.)")
 		}
 		b.WriteString(cursor + name + "  " + state + extra + "\n")

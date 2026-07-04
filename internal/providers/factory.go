@@ -14,6 +14,10 @@ import (
 // ErrProviderNotImplemented indica que el cloud del contexto aún no tiene provider.
 var ErrProviderNotImplemented = errors.New("provider not implemented")
 
+// IsImplemented indica si un cloud tiene provider real. Fuente única: la fábrica
+// y la UI (marca "(no impl.)") deben coincidir siempre.
+func IsImplemented(cloud string) bool { return cloud == "aws" }
+
 // Provider agrupa las capacidades de un contexto; cachea la sesión del cloud.
 type Provider interface {
 	Deployer() (core.Deployer, error)
@@ -27,11 +31,9 @@ type ProviderFactory func(ctx context.Context, c config.Context) (Provider, erro
 // NewProviderFactory devuelve la fábrica por defecto (AWS real; otros → error).
 func NewProviderFactory() ProviderFactory {
 	return func(ctx context.Context, c config.Context) (Provider, error) {
-		switch c.Cloud {
-		case "aws":
-			return aws.NewProvider(ctx, c)
-		default:
+		if !IsImplemented(c.Cloud) {
 			return nil, fmt.Errorf("%w: %q", ErrProviderNotImplemented, c.Cloud)
 		}
+		return aws.NewProvider(ctx, c)
 	}
 }
