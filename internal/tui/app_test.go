@@ -178,26 +178,6 @@ func TestClickTopBarOpensContextPicker(t *testing.T) {
 	require.Equal(t, focusContextPicker, m.focus)
 }
 
-// stripANSI quita los códigos de escape ANSI (ancho cero) para localizar columnas reales.
-func stripANSI(s string) string {
-	var b strings.Builder
-	inEsc := false
-	for _, r := range s {
-		if r == 0x1b {
-			inEsc = true
-			continue
-		}
-		if inEsc {
-			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-				inEsc = false
-			}
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
-
 // Click sobre la pestaña "Events" del panel la activa. Anclado al render:
 // X e Y se derivan de la posición real del texto "Events" en View().
 func TestClickPanelTabSwitches(t *testing.T) {
