@@ -108,7 +108,7 @@ func TestRunActionCmdRejectsDeploy(t *testing.T) {
 	m, _ = applySize(m, 120, 40)
 	cmd := m.runActionCmd(actionDeploy, "svc", "v1")
 	msg := cmd().(actionDoneMsg)
-	require.Error(t, msg.err)
+	require.ErrorContains(t, msg.err, "deploy must go through startDeployCmd")
 	require.Empty(t, fake.DeployCalls) // jamás llama a Deploy sin streaming
 }
 

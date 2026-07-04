@@ -118,11 +118,11 @@ func newServiceDeployCmd() *cobra.Command {
 		Short: "Deploy a new image tag to a service (preview before applying)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			app := FromContext(cmd.Context())
-			if err := app.RequireWritable(); err != nil {
-				return err
-			}
 			if yes && (service == "" || tag == "") {
 				return fmt.Errorf("non-interactive deploy (-y) requires --service and --tag")
+			}
+			if err := app.RequireWritable(); err != nil {
+				return err
 			}
 			dep, err := app.Deployer(cmd.Context())
 			if err != nil {

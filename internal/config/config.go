@@ -27,7 +27,8 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	for _, k := range md.Undecoded() {
-		if strings.HasPrefix(k.String(), "providers") {
+		ks := k.String()
+		if ks == "providers" || strings.HasPrefix(ks, "providers.") {
 			cfg.hasLegacyProviders = true
 			break
 		}

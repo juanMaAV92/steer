@@ -13,8 +13,8 @@ import (
 // Provider agrupa las capacidades AWS de un contexto. La aws.Config se carga
 // una sola vez; las capacidades se memoizan.
 type Provider struct {
-	cfg awssdk.Config
-	ctx config.Context
+	cfg    awssdk.Config
+	cfgCtx config.Context
 
 	once     sync.Once
 	deployer core.Deployer
@@ -29,11 +29,11 @@ func NewProvider(ctx context.Context, c config.Context) (*Provider, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Provider{cfg: cfg, ctx: c}, nil
+	return &Provider{cfg: cfg, cfgCtx: c}, nil
 }
 
 // Deployer devuelve el Deployer ECS del contexto (memoizado).
 func (p *Provider) Deployer() (core.Deployer, error) {
-	p.once.Do(func() { p.deployer = NewDeployer(p.cfg, p.ctx.Cluster) })
+	p.once.Do(func() { p.deployer = NewDeployer(p.cfg, p.cfgCtx.Cluster) })
 	return p.deployer, nil
 }
