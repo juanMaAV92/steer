@@ -385,7 +385,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		m.notice = ""
 		return m, m.loadServicesCmd()
-	case msg.String() == "c":
+	case key.Matches(msg, m.keys.Context):
 		// abre el overlay de selección de contexto
 		m.picker = newContextPicker(m.contexts, m.current.Name)
 		m.notice = ""
@@ -403,10 +403,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		// cambiar pestaña: derecha/izquierda (cíclico en ambos sentidos)
-		switch msg.String() {
-		case "right", "l":
+		switch {
+		case key.Matches(msg, m.keys.Right):
 			m.tabs.Next()
-		case "left", "h":
+		case key.Matches(msg, m.keys.Left):
 			m.tabs.Prev()
 		}
 		return m, nil

@@ -17,6 +17,13 @@ func TestDefaultKeysBound(t *testing.T) {
 	require.NotEmpty(t, k.shortHelp())
 }
 
+func TestNavAndContextKeysBound(t *testing.T) {
+	k := defaultKeys()
+	require.True(t, key.Matches(keyMsg("l"), k.Right))
+	require.True(t, key.Matches(keyMsg("h"), k.Left))
+	require.True(t, key.Matches(keyMsg("c"), k.Context))
+}
+
 // keyMsg es el helper compartido de tests del paquete tui.
 func keyMsg(s string) tea.KeyMsg {
 	switch s {
