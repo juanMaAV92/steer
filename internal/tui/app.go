@@ -335,6 +335,11 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
 		return nil
 	}
+	// con el formulario abierto, el mouse solo interactúa con sus botones:
+	// click fuera = no-op (solo esc o Cancel cierran)
+	if m.form != nil {
+		return m.clickForm(msg)
+	}
 	// click en la barra superior (contexto) → abrir el selector de contexto
 	if msg.Y < topBarHeight {
 		m.overlay = newPickerOverlay(m.keys, m.contexts, m.current.Name)
@@ -555,6 +560,32 @@ func actionKindFor(idx int) actionKind {
 	default:
 		return actionDeploy
 	}
+}
+
+// clickForm resuelve un click con el formulario abierto: activa el botón bajo el
+// cursor o no hace nada. La geometría (como la de los botones de Details) solo es
+// válida en dos columnas; en una columna el formulario se opera por teclado.
+func (m *Model) clickForm(msg tea.MouseMsg) tea.Cmd {
+	if m.singleColumn {
+		return nil
+	}
+	// fila superior del formulario: cuerpo del panel (pestañas + línea en blanco)
+	// + las filas de DetailsView (0..DetailsButtonLine) → el form empieza después.
+	formY0 := topBarHeight + borderTop + 2 + panel.DetailsButtonLine + 1
+	row := msg.Y - formY0
+	x := msg.X - (m.sidebarW + 2) // contenido del panel: divisor + PaddingLeft
+	idx := m.form.buttonAt(row, x)
+	if idx < 0 {
+		return nil
+	}
+	done, result := m.form.activateIndex(idx)
+	if done {
+		m.form = nil
+	}
+	if r, ok := result.(actionConfirmedMsg); ok {
+		return m.applyActionConfirmed(r)
+	}
+	return nil
 }
 
 // openActionKind abre el formulario para una acción (click en botones de Details).

@@ -581,3 +581,89 @@ func TestFilterEnterKeepsQuery(t *testing.T) {
 	m = mustUpdate(t, m, keyMsg("d"))
 	require.NotNil(t, m.form) // abrió el formulario de deploy
 }
+
+// findInView localiza needle en el render y devuelve la coordenada de click
+// (columna en runas + 1 para caer dentro de la caja, y la fila). Falla si no aparece.
+func findInView(t *testing.T, view, needle string) (x, y int) {
+	t.Helper()
+	for row, line := range strings.Split(view, "\n") {
+		clean := stripANSI(line)
+		if i := strings.Index(clean, needle); i >= 0 {
+			return utf8.RuneCountInString(clean[:i]) + 1, row
+		}
+	}
+	t.Fatalf("no se encontró %q en el render", needle)
+	return -1, -1
+}
+
+// TestClickFormConfirmButton: click en [ Deploy (↵) ] del formulario confirma y
+// arranca el flujo de deploy en vivo. Anclado al render.
+func TestClickFormConfirmButton(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("d"))
+	for _, r := range "v2" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	clickX, clickY := findInView(t, m.View(), "Deploy (↵)")
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY}
+	updated, cmd := m.Update(click)
+	m = updated.(Model)
+	require.Nil(t, m.form)
+	require.NotNil(t, cmd, "el click en confirmar debe devolver startDeployCmd")
+	require.Equal(t, panel.TabEvents, m.tabs.Active)
+	require.True(t, m.deploy.Active)
+}
+
+// TestClickFormCancelButton: click en [ Cancel (esc) ] cierra sin emitir acción.
+func TestClickFormCancelButton(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("d"))
+	clickX, clickY := findInView(t, m.View(), "Cancel (esc)")
+	updated, cmd := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY})
+	m = updated.(Model)
+	require.Nil(t, m.form)
+	require.Nil(t, cmd)
+	require.False(t, m.deploy.Active)
+}
+
+// TestClickOutsideFormIsNoop: con el formulario abierto, el click fuera no cierra,
+// no cambia la selección y no abre el picker (reemplaza a TestClickCancelsActionModal).
+func TestClickOutsideFormIsNoop(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("d"))
+	require.NotNil(t, m.form)
+	before, _ := m.sidebar.selected()
+	for _, click := range []tea.MouseMsg{
+		{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 1, Y: 5}, // sidebar
+		{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 1, Y: 0}, // top bar
+	} {
+		m = mustUpdate(t, m, click)
+		require.NotNil(t, m.form, "el formulario no debe cerrarse con click fuera")
+		require.Nil(t, m.overlay, "el click en la top bar no debe abrir el picker")
+	}
+	after, _ := m.sidebar.selected()
+	require.Equal(t, before.Name, after.Name, "la selección no debe cambiar")
+}
+
+// TestWheelStillWorksWithFormOpen: la rueda no cierra ni activa nada con el formulario abierto.
+func TestWheelStillWorksWithFormOpen(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("d"))
+	wheel := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown, X: m.sidebarW + 5, Y: 10}
+	m = mustUpdate(t, m, wheel)
+	require.NotNil(t, m.form)
+}
+
+// TestFormSingleColumnClickNoop: en una columna la geometría de botones no aplica;
+// ningún click activa ni cierra el formulario (teclado sigue funcionando).
+func TestFormSingleColumnClickNoop(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m, _ = applySize(m, 79, 40)
+	require.True(t, m.singleColumn)
+	m = mustUpdate(t, m, keyMsg("d"))
+	require.NotNil(t, m.form)
+	updated, cmd := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 40, Y: 25})
+	m = updated.(Model)
+	require.NotNil(t, m.form)
+	require.Nil(t, cmd)
+}
