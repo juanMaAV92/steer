@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -78,6 +79,11 @@ type Model struct {
 	sidebarW, panelW, bodyH int
 	singleColumn            bool
 	deploy                  deployState
+
+	tagsRepo    string // repo cuyo listado de tags está cargado/cargando
+	tags        []core.ImageTag
+	tagsLoading bool
+	tagsErr     string
 }
 
 func New(ctx context.Context, factory providers.ProviderFactory, contexts []config.Context, current config.Context) Model {
@@ -135,6 +141,34 @@ func (m Model) loadReposCmd() tea.Cmd {
 		repos, err := reg.ListRepositories(ctx)
 		return reposMsg{repos: repos, err: err}
 	}
+}
+
+// loadTagsCmd pide los tags de un repo (nombre real).
+func (m Model) loadTagsCmd(repo string) tea.Cmd {
+	provider := m.provider
+	ctx := m.runCtx
+	return func() tea.Msg {
+		reg, err := provider.Registry()
+		if err != nil {
+			return tagsMsg{repo: repo, err: err}
+		}
+		tags, err := reg.ListTags(ctx, repo)
+		return tagsMsg{repo: repo, tags: tags, err: err}
+	}
+}
+
+// syncRepoTags dispara la carga de tags si la selección de repo cambió.
+// Llamar tras cualquier mutación del sidebar (teclas y clicks).
+func (m *Model) syncRepoTags() tea.Cmd {
+	repo, ok := m.sidebar.selectedRepo()
+	if !ok || repo == m.tagsRepo {
+		return nil
+	}
+	m.tagsRepo = repo
+	m.tags = nil
+	m.tagsErr = ""
+	m.tagsLoading = true
+	return m.loadTagsCmd(repo)
 }
 
 // layout reparte el espacio: [top bar][regla][cuerpo bodyH][regla][help].
@@ -196,6 +230,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			m.sidebar.setRepos(msg.repos)
 		}
+		return m, nil
+
+	case tagsMsg:
+		if msg.repo != m.tagsRepo {
+			return m, nil // respuesta obsoleta de un repo ya deseleccionado
+		}
+		m.tagsLoading = false
+		if msg.err != nil {
+			m.tagsErr = msg.err.Error()
+			return m, nil
+		}
+		m.tags = msg.tags
 		return m, nil
 
 	case tickMsg:
@@ -387,10 +433,11 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 			switch e.Kind {
 			case entryHeader:
 				m.sidebar.toggle(e.Section)
-			case entryService:
+			case entryService, entryRepo:
 				m.sidebar.selectEntry(e)
 			}
 			m.focus = focusSidebar
+			return m.syncRepoTags()
 		}
 		return nil
 	}
@@ -498,7 +545,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebar.toggle(e.Section)
 		}
 	}
-	return m, nil
+	return m, m.syncRepoTags()
 }
 
 // applyContextSwitch conmuta al contexto recibido en sel; si el provider falla, muestra un notice.
@@ -542,6 +589,7 @@ func (m Model) applyContextSwitch(sel config.Context) (tea.Model, tea.Cmd) {
 	m.deploy.Reset()
 	m.events.Reset()
 	m.tabs.Active = panel.TabDetails
+	m.tagsRepo, m.tags, m.tagsErr, m.tagsLoading = "", nil, "", false
 	return m, tea.Batch(m.loadServicesCmd(), m.loadReposCmd())
 }
 
@@ -656,7 +704,11 @@ func (m Model) View() string {
 	block := func(w int) lipgloss.Style {
 		return lipgloss.NewStyle().Width(w).Height(m.bodyH).PaddingLeft(1)
 	}
-	panelBody := m.tabs.View() + "\n\n" + m.panelBody()
+	header := m.tabs.View()
+	if m.sidebar.lastSelected == sectionImages {
+		header = render.Brand("TAGS")
+	}
+	panelBody := header + "\n\n" + m.panelBody()
 	var body string
 	if m.singleColumn {
 		side := block(m.sidebarW).Height(m.bodyH / 2).Render(m.sidebar.view(m.focus == focusSidebar))
@@ -672,6 +724,21 @@ func (m Model) View() string {
 }
 
 func (m Model) panelBody() string {
+	if m.sidebar.lastSelected == sectionImages {
+		repo, ok := m.sidebar.selectedRepo()
+		if !ok {
+			return render.Dim("no repository selected")
+		}
+		switch {
+		case m.tagsLoading:
+			return render.Dim("loading tags…")
+		case m.tagsErr != "":
+			return render.Danger("registry error: " + m.tagsErr)
+		default:
+			short := strings.TrimPrefix(repo, m.current.RepoPrefix())
+			return panel.TagsView(short, m.tags, m.deployedTagFor(repo), time.Now())
+		}
+	}
 	s, ok := m.sidebar.selected()
 	if !ok {
 		return render.Dim("no service selected")
@@ -689,4 +756,16 @@ func (m Model) panelBody() string {
 		}
 		return body
 	}
+}
+
+// deployedTagFor devuelve el tag que corre en el servicio hermano del repo
+// (mismo {name} corto en ambos templates); vacío si no hay hermano.
+func (m Model) deployedTagFor(repo string) string {
+	short := strings.TrimPrefix(repo, m.current.RepoPrefix())
+	for _, s := range m.sidebar.services {
+		if strings.TrimPrefix(s.Name, m.current.Prefix()) == short {
+			return s.Tag
+		}
+	}
+	return ""
 }

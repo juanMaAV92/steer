@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -237,6 +238,34 @@ func TestEnterOnHeaderToggles(t *testing.T) {
 	e, _ := m.sidebar.cursorEntry()
 	require.Equal(t, sectionImages, e.Section) // el toggle recoloca el cursor en SU header
 	require.Contains(t, stripANSI(m.View()), "configure images in steer.toml")
+}
+
+// TestSelectRepoShowsTagsPanel: seleccionar un repo carga y muestra su tabla de tags
+// con el marcador del tag desplegado por el servicio hermano.
+func TestSelectRepoShowsTagsPanel(t *testing.T) {
+	services := []core.ServiceStatus{
+		{Name: "api", Running: 2, Desired: 2, Tag: "v1.0.0"},
+	}
+	reg := &coretest.FakeRegistry{
+		Repos: []core.Repository{{Name: "api"}},
+		Tags: map[string][]core.ImageTag{"api": {
+			{Tag: "v2", Digest: "sha256:bbbb222222222", SizeBytes: 100 * 1024 * 1024, PushedAt: time.Now().Add(-time.Hour)},
+			{Tag: "v1.0.0", Digest: "sha256:aaaa111111111", SizeBytes: 90 * 1024 * 1024, PushedAt: time.Now().Add(-48 * time.Hour)},
+		}},
+	}
+	m := newTestModelWithRegistry(services, reg)
+	m = mustUpdate(t, m, reposMsg{repos: reg.Repos})
+	m.sidebar.collapsed[sectionImages] = false
+	// click en el repo (anclado al render)
+	clickX, clickY := findInView(t, m.View(), "▣ api")
+	updated, cmd := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY})
+	m = updated.(Model)
+	require.NotNil(t, cmd, "seleccionar repo debe disparar la carga de tags")
+	m = mustUpdate(t, m, cmd().(tagsMsg))
+	out := stripANSI(m.View())
+	require.Contains(t, out, "TAGS")
+	require.Contains(t, out, "v2")
+	require.Contains(t, out, "● now") // v1.0.0 coincide con el tag del servicio api
 }
 
 func TestMouseWheelScrollsPanelWhenFocused(t *testing.T) {

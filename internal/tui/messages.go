@@ -17,6 +17,12 @@ type reposMsg struct {
 	err      error
 }
 
+type tagsMsg struct {
+	repo string
+	tags []core.ImageTag
+	err  error
+}
+
 type tickMsg struct{}
 
 type actionDoneMsg struct {
