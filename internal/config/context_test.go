@@ -130,3 +130,26 @@ func TestContextValidate(t *testing.T) {
 	require.Error(t, Context{Profile: "dev", Cluster: "c"}.Validate()) // sin cloud
 	require.Error(t, Context{Cloud: "aws", Profile: "d"}.Validate())   // sin cluster
 }
+
+func TestRepoNameAndPrefix(t *testing.T) {
+	c := Context{Images: &ImagesConfig{RepoTemplate: "nao-v2-{name}"}}
+	require.Equal(t, "nao-v2-api", c.RepoName("api"))
+	require.Equal(t, "nao-v2-", c.RepoPrefix())
+	// sin bloque images: nombre tal cual, prefijo vacío
+	var plain Context
+	require.Equal(t, "api", plain.RepoName("api"))
+	require.Equal(t, "", plain.RepoPrefix())
+}
+
+func TestValidateImagesBlock(t *testing.T) {
+	base := Context{Name: "dev", Cloud: "aws", Profile: "p", Cluster: "c"}
+	ok := base
+	ok.Images = &ImagesConfig{RepoTemplate: "x-{name}"}
+	require.NoError(t, ok.Validate())
+	bad := base
+	bad.Images = &ImagesConfig{RepoTemplate: "sin-placeholder"}
+	require.ErrorContains(t, bad.Validate(), "{name}")
+	empty := base
+	empty.Images = &ImagesConfig{}
+	require.ErrorContains(t, empty.Validate(), "repo_template")
+}

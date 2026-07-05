@@ -4,6 +4,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -55,4 +56,31 @@ type Deployer interface {
 	DeploymentStatus(ctx context.Context, service string) (Deployment, error)
 	// ServiceEvents devuelve los eventos del servicio, más recientes primero.
 	ServiceEvents(ctx context.Context, service string) ([]ServiceEvent, error)
+}
+
+// ErrNoImagesConfig indica que el contexto no tiene bloque [images]; la
+// capacidad está deshabilitada, no es un fallo del cloud.
+var ErrNoImagesConfig = errors.New("images not configured for this context")
+
+// Repository es un repositorio de imágenes del registry del contexto.
+type Repository struct {
+	Name string // nombre real (con prefijo); la UI lo acorta con RepoPrefix
+}
+
+// ImageTag es una imagen de contenedor etiquetada y desplegable.
+type ImageTag struct {
+	Tag       string
+	Digest    string // completo; la UI lo acorta con render.ShortDigest
+	SizeBytes int64
+	PushedAt  time.Time
+}
+
+// Registry lista repositorios e imágenes del registry del contexto
+// (ECR / Artifact Registry / ACR). Solo lectura.
+type Registry interface {
+	// ListRepositories devuelve los repos del prefijo del contexto, alfanuméricos.
+	ListRepositories(ctx context.Context) ([]Repository, error)
+	// ListTags devuelve solo imágenes con tag desplegables (sin manifiestos
+	// colgantes, attestations ni firmas), más recientes primero, tope 50.
+	ListTags(ctx context.Context, repo string) ([]ImageTag, error)
 }

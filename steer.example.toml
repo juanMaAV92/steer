@@ -1,24 +1,23 @@
 # Steer configuration — copy to `steer.toml` (gitignored) and fill in your values.
 # Steer looks for `steer.toml` in the current repo or ~/.config/steer/steer.toml.
 
-[providers.aws.environments.dev]
-profile  = "dev"
-writable = true
+default_context = "dev"
 
-[providers.aws.environments.staging]
-profile    = "staging"
-account_id = "000000000000"
-role_arn   = "arn:aws:iam::000000000000:role/your-deployer-role"
-writable   = true
+[contexts.dev]
+cloud            = "aws"
+profile          = "dev"
+cluster          = "myteam-dev"
+service_template = "myteam-dev-{name}"
+writable         = true
 
-[providers.aws.environments.prod]
-profile    = "prod"
-account_id = "000000000000"
-role_arn   = "arn:aws:iam::000000000000:role/your-deployer-role"
-writable   = false   # read-only: blocks mutating commands in prod
+  # Optional: enables the IMAGES section and the deploy tag-picker.
+  [contexts.dev.images]
+  repo_template = "myteam-{name}"
 
-[providers.aws.naming]
-# Templates that resolve short names to real AWS resource names.
-# Placeholders: {env} = environment key, {name} = the short name you pass on the CLI.
-cluster_template = "{env}-cluster"
-service_template = "{name}"
+[contexts.prod]
+cloud            = "aws"
+profile          = "prod"
+role_arn         = "arn:aws:iam::000000000000:role/your-deployer-role"
+cluster          = "myteam-prod"
+service_template = "myteam-prod-{name}"
+writable         = false   # read-only: blocks mutating commands in prod
