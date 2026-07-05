@@ -177,6 +177,29 @@ func (m Model) loadFormTagsCmd(service string) tea.Cmd {
 	}
 }
 
+// validateTagCmd consulta HasTag para el repo hermano del servicio. Estricta +
+// degradable: notFound bloquea; error del registry o sin [images] → skipped.
+func (m Model) validateTagCmd(service, tag string) tea.Cmd {
+	provider := m.provider
+	ctx := m.runCtx
+	short := strings.TrimPrefix(service, m.current.Prefix())
+	repo := m.current.RepoName(short)
+	return func() tea.Msg {
+		reg, err := provider.Registry()
+		if err != nil {
+			return tagValidatedMsg{service: service, tag: tag, repo: repo, verdict: tagSkipped}
+		}
+		ok, err := reg.HasTag(ctx, repo, tag)
+		if err != nil {
+			return tagValidatedMsg{service: service, tag: tag, repo: repo, verdict: tagSkipped}
+		}
+		if !ok {
+			return tagValidatedMsg{service: service, tag: tag, repo: repo, verdict: tagNotFound}
+		}
+		return tagValidatedMsg{service: service, tag: tag, repo: repo, verdict: tagOK}
+	}
+}
+
 // syncRepoTags dispara la carga de tags si la selección de repo cambió.
 // Llamar tras cualquier mutación del sidebar (teclas y clicks).
 func (m *Model) syncRepoTags() tea.Cmd {
@@ -269,6 +292,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.form.setTags(msg.tags)
 		}
 		return m, nil
+
+	case tagValidatedMsg:
+		// guard de obsolescencia: el form debe seguir abierto validando ESTE tag
+		if m.form == nil || m.form.kind != actionDeploy || !m.form.validating ||
+			m.form.service != msg.service || m.form.input != msg.tag {
+			return m, nil
+		}
+		switch msg.verdict {
+		case tagNotFound:
+			m.form.validating = false
+			m.form.errMsg = "tag not found in " + msg.repo
+			return m, nil
+		case tagSkipped:
+			m.notice = "registry check skipped — deploying unverified tag"
+		}
+		m.form = nil
+		cmd := m.applyActionConfirmed(actionConfirmedMsg{kind: actionDeploy, service: msg.service, input: msg.tag})
+		return m, cmd
 
 	case tickMsg:
 		return m, tea.Batch(m.loadServicesCmd(), tickCmd())
@@ -401,11 +442,23 @@ func (m *Model) applyActionConfirmed(r actionConfirmedMsg) tea.Cmd {
 // esc cancela, enter activa el botón enfocado, tab/←/→ mueven el foco y el resto
 // se teclea en el input. Las teclas globales NO disparan (modo captura).
 func (m Model) handleFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.form.validating {
+		if key.Matches(msg, m.keys.Esc) {
+			m.form = nil // esc sigue cancelando; el veredicto llegará obsoleto
+		}
+		return m, nil
+	}
 	switch {
 	case key.Matches(msg, m.keys.Esc):
 		m.form = nil
 	case key.Matches(msg, m.keys.Enter):
 		done, result := m.form.activate()
+		if r, ok := result.(actionConfirmedMsg); ok && r.kind == actionDeploy {
+			// deploy no arranca directo: primero se valida el tag (el form queda abierto)
+			m.form.validating = true
+			m.form.errMsg = ""
+			return m, m.validateTagCmd(r.service, r.input)
+		}
 		if done {
 			m.form = nil
 		}
@@ -698,6 +751,9 @@ func (m *Model) clickForm(msg tea.MouseMsg) tea.Cmd {
 	if m.singleColumn {
 		return nil
 	}
+	if m.form.validating {
+		return nil
+	}
 	// fila superior del formulario: cuerpo del panel (pestañas + línea en blanco)
 	// + las filas de DetailsView (0..DetailsButtonLine) → el form empieza después.
 	formY0 := topBarHeight + borderTop + 2 + panel.DetailsButtonLine + 1
@@ -713,6 +769,11 @@ func (m *Model) clickForm(msg tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	done, result := m.form.activateIndex(idx)
+	if r, ok := result.(actionConfirmedMsg); ok && r.kind == actionDeploy {
+		m.form.validating = true
+		m.form.errMsg = ""
+		return m.validateTagCmd(r.service, r.input)
+	}
 	if done {
 		m.form = nil
 	}

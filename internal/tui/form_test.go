@@ -124,3 +124,21 @@ func TestFormGeometryShiftsWithTags(t *testing.T) {
 	s.setTags(pickerTags())
 	require.Equal(t, 3, s.buttonRow())
 }
+
+func TestFormStatusRowShiftsGeometry(t *testing.T) {
+	f := newActionForm(actionDeploy, "api")
+	require.Equal(t, 3, f.buttonRow())
+	f.validating = true
+	require.Equal(t, 1, f.statusRows())
+	require.Equal(t, 4, f.buttonRow()) // la línea de estado empuja los botones
+	require.Contains(t, stripANSI(f.view()), "validating tag…")
+	f.validating = false
+	f.errMsg = "tag not found in nao-v2-shared-api"
+	require.Equal(t, 4, f.buttonRow())
+	require.Contains(t, stripANSI(f.view()), "tag not found in nao-v2-shared-api")
+	// con picker: estado + tags desplazan juntos
+	f.setTags(pickerTags())
+	require.Equal(t, 4+3, f.buttonRow())
+	require.Equal(t, 0, f.tagAt(4)) // los tags empiezan tras la línea de estado
+	require.Equal(t, -1, f.tagAt(3))
+}

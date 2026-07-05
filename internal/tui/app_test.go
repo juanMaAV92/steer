@@ -510,8 +510,12 @@ func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 	for _, r := range "v2" {
 		m = mustUpdate(t, m, keyMsg(string(r)))
 	}
-	// enter ejecuta: devuelve startDeployCmd y salta a Events
+	// enter dispara la validación (sin registry → skipped); el veredicto arranca el deploy
 	updated, cmd := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.True(t, m.form.validating)
+	require.NotNil(t, cmd)
+	updated, cmd = m.Update(cmd().(tagValidatedMsg))
 	m = updated.(Model)
 	require.Equal(t, panel.TabEvents, m.tabs.Active)
 	require.NotNil(t, cmd)
@@ -745,8 +749,13 @@ func TestClickFormConfirmButton(t *testing.T) {
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY}
 	updated, cmd := m.Update(click)
 	m = updated.(Model)
+	require.NotNil(t, m.form, "el form queda abierto validando")
+	require.True(t, m.form.validating)
+	require.NotNil(t, cmd)
+	updated, cmd = m.Update(cmd().(tagValidatedMsg)) // sin registry → skipped
+	m = updated.(Model)
 	require.Nil(t, m.form)
-	require.NotNil(t, cmd, "el click en confirmar debe devolver startDeployCmd")
+	require.NotNil(t, cmd, "el veredicto skipped debe devolver startDeployCmd")
 	require.Equal(t, panel.TabEvents, m.tabs.Active)
 	require.True(t, m.deploy.Active)
 }
@@ -831,7 +840,11 @@ func TestDeployFormShowsAndPicksTags(t *testing.T) {
 	require.Contains(t, stripANSI(m.View()), "v9.9")
 	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyDown})
 	require.Equal(t, "v9.9", m.form.input)
+	// enter valida el tag; el veredicto ok cierra el form y arranca el deploy
 	updated, cmd = m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.True(t, m.form.validating)
+	updated, cmd = m.Update(cmd().(tagValidatedMsg))
 	m = updated.(Model)
 	require.Nil(t, m.form)
 	require.NotNil(t, cmd) // startDeployCmd con el tag elegido
@@ -847,11 +860,14 @@ func TestDeployFormDegradesWithoutRegistry(t *testing.T) {
 		m = mustUpdate(t, m, cmd().(formTagsMsg)) // llega vacío
 	}
 	require.Equal(t, 3, m.form.buttonRow()) // geometría sin picker
-	// el flujo teclear+enter sigue intacto
+	// el flujo teclear+enter sigue intacto (la validación degrada a skipped)
 	for _, r := range "v2" {
 		m = mustUpdate(t, m, keyMsg(string(r)))
 	}
 	updated, cmd = m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.True(t, m.form.validating)
+	updated, cmd = m.Update(cmd().(tagValidatedMsg))
 	m = updated.(Model)
 	require.Nil(t, m.form)
 	require.NotNil(t, cmd)
@@ -870,4 +886,95 @@ func TestClickFormTagRowFillsInput(t *testing.T) {
 	m = mustUpdate(t, m, tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY})
 	require.NotNil(t, m.form, "el click en un tag no cierra el formulario")
 	require.Equal(t, "v9.9", m.form.input)
+}
+
+// TestDeployValidatesTagNotFound: confirmar con tag inexistente mantiene el form
+// abierto con el error; corregir y reconfirmar con tag válido despliega.
+func TestDeployValidatesTagNotFound(t *testing.T) {
+	reg := &coretest.FakeRegistry{Tags: map[string][]core.ImageTag{
+		"api": {{Tag: "v9.9", PushedAt: time.Now().Add(-time.Hour)}},
+	}}
+	m := newTestModelWithRegistry(servicesNamed("api"), reg)
+	updated, cmd := m.Update(keyMsg("d"))
+	m = updated.(Model)
+	m = mustUpdate(t, m, cmd().(formTagsMsg))
+	for _, r := range "nope" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	// enter dispara la validación: el form queda abierto validando
+	updated, cmd = m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.NotNil(t, m.form, "el form no se cierra hasta el veredicto")
+	require.True(t, m.form.validating)
+	require.NotNil(t, cmd)
+	// enter y clicks quedan inertes mientras valida
+	updated, c2 := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.Nil(t, c2)
+	require.True(t, m.form.validating)
+	// veredicto notFound: form abierto con la línea roja, sin deploy
+	m = mustUpdate(t, m, cmd().(tagValidatedMsg))
+	require.NotNil(t, m.form)
+	require.False(t, m.form.validating)
+	require.Contains(t, stripANSI(m.View()), "tag not found in api")
+	require.False(t, m.deploy.Active)
+	require.Equal(t, []string{"api/nope"}, reg.HasTagCalls)
+}
+
+// TestDeployValidatesTagOKStartsDeploy: veredicto ok cierra el form y arranca el flujo.
+func TestDeployValidatesTagOKStartsDeploy(t *testing.T) {
+	reg := &coretest.FakeRegistry{Tags: map[string][]core.ImageTag{
+		"api": {{Tag: "v9.9", PushedAt: time.Now().Add(-time.Hour)}},
+	}}
+	m := newTestModelWithRegistry(servicesNamed("api"), reg)
+	updated, cmd := m.Update(keyMsg("d"))
+	m = updated.(Model)
+	m = mustUpdate(t, m, cmd().(formTagsMsg))
+	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyDown}) // pick v9.9
+	updated, cmd = m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.True(t, m.form.validating)
+	updated, cmd = m.Update(cmd().(tagValidatedMsg))
+	m = updated.(Model)
+	require.Nil(t, m.form)
+	require.NotNil(t, cmd) // startDeployCmd
+	require.Equal(t, panel.TabEvents, m.tabs.Active)
+	require.True(t, m.deploy.Active)
+}
+
+// TestDeploySkippedWithoutRegistryStillDeploys: sin [images] el check se salta con aviso.
+func TestDeploySkippedWithoutRegistryStillDeploys(t *testing.T) {
+	m := newTestModel(sampleServices()) // sin registry → Registry() = ErrNoImagesConfig
+	m = mustUpdate(t, m, keyMsg("d"))
+	for _, r := range "v2" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	updated, cmd := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.NotNil(t, cmd)
+	updated, cmd = m.Update(cmd().(tagValidatedMsg)) // verdict: tagSkipped
+	m = updated.(Model)
+	require.Nil(t, m.form)
+	require.NotNil(t, cmd) // el deploy continúa
+	require.True(t, m.deploy.Active)
+	require.Contains(t, m.notice, "registry check skipped")
+}
+
+// TestStaleTagValidatedIgnored: un veredicto tras esc no revive nada.
+func TestStaleTagValidatedIgnored(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("d"))
+	for _, r := range "v2" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	updated, cmd := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	msg := cmd().(tagValidatedMsg)
+	m = mustUpdate(t, m, keyMsg("esc")) // cancela durante la validación
+	require.Nil(t, m.form)
+	updated, c2 := m.Update(msg)
+	m = updated.(Model)
+	require.Nil(t, m.form)
+	require.Nil(t, c2)
+	require.False(t, m.deploy.Active)
 }

@@ -12,7 +12,7 @@ import (
 )
 
 // Geometría del formulario inline, fuente única para render y hit-testing:
-// borde(0), título(1), prompt(2), tags(3..3+n-1), botones(3+n), borde.
+// borde(0), título(1), prompt(2), estado(3 si hay), tags(…), botones, borde.
 const (
 	formContentX0 = 2 // columnas a la izquierda del contenido: borde(1) + padding(1)
 )
@@ -36,6 +36,9 @@ type actionForm struct {
 	pick    int             // índice en visibleTags() rellenado por ↑↓; -1 = tecleando
 	query   string          // lo tecleado por el usuario; distinto de input mientras hay pick,
 	// para que ↑↓ siga filtrando sobre lo escrito y no sobre el tag ya elegido
+
+	validating bool   // consulta HasTag en vuelo: botones y teclado inertes (esc cancela)
+	errMsg     string // veredicto notFound: línea roja bajo el prompt
 }
 
 func newActionForm(kind actionKind, service string) *actionForm {
@@ -53,10 +56,12 @@ func (f *actionForm) typeKey(msg tea.KeyMsg) {
 		}
 		f.pick = -1
 		f.query = f.input
+		f.errMsg = ""
 	case tea.KeyRunes:
 		f.input += string(msg.Runes)
 		f.pick = -1
 		f.query = f.input
+		f.errMsg = ""
 	}
 }
 
@@ -94,17 +99,26 @@ func (f *actionForm) movePick(delta int) {
 	f.input = vis[f.pick].Tag
 }
 
+// statusRows: fila opcional de estado (validating o error) entre prompt y tags.
+func (f actionForm) statusRows() int {
+	if f.validating || f.errMsg != "" {
+		return 1
+	}
+	return 0
+}
+
 // buttonRow es la fila de los botones dentro del view: la geometría base
-// (borde, título, prompt) más las filas visibles del picker.
-func (f actionForm) buttonRow() int { return 3 + len(f.visibleTags()) }
+// (borde, título, prompt, estado) más las filas visibles del picker.
+func (f actionForm) buttonRow() int { return 3 + f.statusRows() + len(f.visibleTags()) }
 
 // tagAt devuelve el índice del tag en la fila row del view, o -1.
 func (f actionForm) tagAt(row int) int {
+	base := 3 + f.statusRows()
 	n := len(f.visibleTags())
-	if n == 0 || row < 3 || row >= 3+n {
+	if n == 0 || row < base || row >= base+n {
 		return -1
 	}
-	return row - 3
+	return row - base
 }
 
 // moveFocus mueve el foco entre confirmar(0) y cancelar(1), con wrap.
@@ -171,6 +185,11 @@ func (f actionForm) view() string {
 		prompt = render.Dim("This reverts to the previous revision.")
 	}
 	rows := []string{render.Bold(title), prompt}
+	if f.validating {
+		rows = append(rows, render.Dim("validating tag…"))
+	} else if f.errMsg != "" {
+		rows = append(rows, render.Danger(f.errMsg))
+	}
 	if vis := f.visibleTags(); len(vis) > 0 {
 		now := time.Now()
 		for i, t := range vis {
