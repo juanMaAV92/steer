@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,4 +56,15 @@ func TestLabelAtColumn(t *testing.T) {
 	for x := -1; x < 35; x++ {
 		require.Equal(t, ButtonAtColumn(bl, x), LabelAtColumn(bl, 4, 2, x), "x=%d", x)
 	}
+}
+
+func TestButtonsWithFocusHighlightsAndKeepsWidth(t *testing.T) {
+	labels := []string{"Deploy (↵)", "Cancel (esc)"}
+	plain := Buttons(labels)
+	focused := ButtonsWithFocus(labels, 0)
+	require.Contains(t, focused, "Deploy (↵)")
+	// el resaltado no puede alterar la geometría: mismo ancho visible
+	require.Equal(t, lipgloss.Width(plain), lipgloss.Width(focused))
+	// focus fuera de rango = idéntico a Buttons
+	require.Equal(t, plain, ButtonsWithFocus(labels, -1))
 }
