@@ -9,6 +9,7 @@ import (
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
+	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/stretchr/testify/require"
 )
 
@@ -92,6 +93,14 @@ func TestHasTagFoundAndNotFound(t *testing.T) {
 	ok, err = r.HasTag(context.Background(), "nao-v2-shared-api", "nope")
 	require.NoError(t, err) // not found NO es error: es la respuesta
 	require.False(t, ok)
+}
+
+func TestHasTagRepoNotFoundIsSentinel(t *testing.T) {
+	api := &fakeECR{imagesErr: &ecrtypes.RepositoryNotFoundException{}}
+	r := newRegistry(api, "")
+	ok, err := r.HasTag(context.Background(), "nope-repo", "v1")
+	require.False(t, ok)
+	require.ErrorIs(t, err, core.ErrRepoNotFound)
 }
 
 func TestHasTagPropagatesRealErrors(t *testing.T) {

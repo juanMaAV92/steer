@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1044,4 +1045,66 @@ func TestWatchEventCounterIgnoresNormalEvents(t *testing.T) {
 	m = updated.(Model)
 	require.Equal(t, 0, m.deploy.PullErrors)
 	require.True(t, m.deploy.Active)
+}
+
+// TestDeployBlocksWhenRepoMissing: repo inexistente es respuesta definitiva → bloquea.
+func TestDeployBlocksWhenRepoMissing(t *testing.T) {
+	reg := &coretest.FakeRegistry{HasTagErr: core.ErrRepoNotFound}
+	m := newTestModelWithRegistry(servicesNamed("api"), reg)
+	updated, cmd := m.Update(keyMsg("d"))
+	m = updated.(Model)
+	if cmd != nil {
+		m = mustUpdate(t, m, cmd().(formTagsMsg))
+	}
+	for _, r := range "v1" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	updated, cmd = m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	m = mustUpdate(t, m, cmd().(tagValidatedMsg))
+	require.NotNil(t, m.form, "repo inexistente bloquea: el form queda abierto")
+	require.Contains(t, stripANSI(m.View()), "repository api not found")
+	require.False(t, m.deploy.Active)
+}
+
+// TestEscRestoresTagsPanel: cancelar una acción abierta desde un repo vuelve a TAGS.
+func TestEscRestoresTagsPanel(t *testing.T) {
+	reg := &coretest.FakeRegistry{
+		Repos: []core.Repository{{Name: "api"}},
+		Tags:  map[string][]core.ImageTag{"api": {{Tag: "v1", PushedAt: time.Now()}}},
+	}
+	m := newTestModelWithRegistry(servicesNamed("api"), reg)
+	m = mustUpdate(t, m, reposMsg{repos: reg.Repos})
+	m.sidebar.collapsed[sectionImages] = false
+	clickX, clickY := findInView(t, m.View(), "▣ api")
+	updated, cmd := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY})
+	m = updated.(Model)
+	m = mustUpdate(t, m, cmd().(tagsMsg))
+	require.Equal(t, sectionImages, m.sidebar.lastSelected)
+	// abrir deploy (panel salta a Details con el form) y cancelar con esc
+	updated, _ = m.Update(keyMsg("d"))
+	m = updated.(Model)
+	require.NotNil(t, m.form)
+	require.Equal(t, sectionServices, m.sidebar.lastSelected)
+	m = mustUpdate(t, m, keyMsg("esc"))
+	require.Nil(t, m.form)
+	require.Equal(t, sectionImages, m.sidebar.lastSelected, "esc restaura TAGS: el cursor sigue en el repo")
+	require.Contains(t, stripANSI(m.View()), "TAGS")
+}
+
+// TestReloadErrorKeepsRepos: un Refresh fallido no borra la lista ya cargada.
+func TestReloadErrorKeepsRepos(t *testing.T) {
+	reg := &coretest.FakeRegistry{Repos: []core.Repository{{Name: "api"}}}
+	m := newTestModelWithRegistry(servicesNamed("api"), reg)
+	m = mustUpdate(t, m, reposMsg{repos: reg.Repos})
+	m.sidebar.collapsed[sectionImages] = false
+	m = mustUpdate(t, m, reposMsg{err: errors.New("throttled")})
+	out := stripANSI(m.View())
+	require.Contains(t, out, "▣ api", "los repos cargados siguen visibles")
+	require.Contains(t, m.notice, "images refresh failed")
+	// sin repos previos, el error sí muestra el estado de sección (comportamiento actual)
+	m2 := newTestModelWithRegistry(nil, reg)
+	m2 = mustUpdate(t, m2, reposMsg{err: errors.New("boom")})
+	m2.sidebar.collapsed[sectionImages] = false
+	require.Contains(t, stripANSI(m2.View()), "registry error: boom")
 }

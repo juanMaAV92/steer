@@ -191,6 +191,9 @@ func (m Model) validateTagCmd(service, tag string) tea.Cmd {
 			return tagValidatedMsg{service: service, tag: tag, repo: repo, verdict: tagSkipped}
 		}
 		ok, err := reg.HasTag(ctx, repo, tag)
+		if errors.Is(err, core.ErrRepoNotFound) {
+			return tagValidatedMsg{service: service, tag: tag, repo: repo, verdict: tagRepoNotFound}
+		}
 		if err != nil {
 			return tagValidatedMsg{service: service, tag: tag, repo: repo, verdict: tagSkipped}
 		}
@@ -269,8 +272,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.disabled:
 			m.sidebar.imagesState = imagesDisabled
 		case msg.err != nil:
-			m.sidebar.imagesState = imagesError
-			m.sidebar.imagesErr = msg.err.Error()
+			if len(m.sidebar.repos) > 0 {
+				// conservar la lista cargada: el fallo transitorio va como notice
+				m.sidebar.imagesState = imagesReady
+				m.notice = "images refresh failed: " + msg.err.Error()
+			} else {
+				m.sidebar.imagesState = imagesError
+				m.sidebar.imagesErr = msg.err.Error()
+			}
 		default:
 			m.sidebar.setRepos(msg.repos)
 		}
@@ -304,6 +313,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tagNotFound:
 			m.form.validating = false
 			m.form.errMsg = "tag not found in " + msg.repo
+			return m, nil
+		case tagRepoNotFound:
+			m.form.validating = false
+			m.form.errMsg = "repository " + msg.repo + " not found"
 			return m, nil
 		case tagSkipped:
 			m.notice = "registry check skipped — deploying unverified tag"
@@ -457,13 +470,13 @@ func (m *Model) applyActionConfirmed(r actionConfirmedMsg) tea.Cmd {
 func (m Model) handleFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.form.validating {
 		if key.Matches(msg, m.keys.Esc) {
-			m.form = nil // esc sigue cancelando; el veredicto llegará obsoleto
+			m.closeForm() // esc sigue cancelando; el veredicto llegará obsoleto
 		}
 		return m, nil
 	}
 	switch {
 	case key.Matches(msg, m.keys.Esc):
-		m.form = nil
+		m.closeForm()
 	case key.Matches(msg, m.keys.Enter):
 		done, result := m.form.activate()
 		if r, ok := result.(actionConfirmedMsg); ok && r.kind == actionDeploy {
@@ -473,7 +486,11 @@ func (m Model) handleFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.validateTagCmd(r.service, r.input)
 		}
 		if done {
-			m.form = nil
+			if result == nil {
+				m.closeForm()
+			} else {
+				m.form = nil
+			}
 		}
 		if result != nil {
 			return m.handleOverlayResult(result)
@@ -788,12 +805,26 @@ func (m *Model) clickForm(msg tea.MouseMsg) tea.Cmd {
 		return m.validateTagCmd(r.service, r.input)
 	}
 	if done {
-		m.form = nil
+		if result == nil {
+			m.closeForm()
+		} else {
+			m.form = nil
+		}
 	}
 	if r, ok := result.(actionConfirmedMsg); ok {
 		return m.applyActionConfirmed(r)
 	}
 	return nil
+}
+
+// closeForm cierra el formulario SIN ejecutar acción y devuelve el panel a TAGS
+// si el cursor del sidebar sigue sobre un repo (la acción se abrió desde ahí).
+// Los cierres con acción confirmada NO pasan por aquí (van a Events/Details).
+func (m *Model) closeForm() {
+	m.form = nil
+	if e, ok := m.sidebar.cursorEntry(); ok && e.Kind == entryRepo {
+		m.sidebar.lastSelected = sectionImages
+	}
 }
 
 // openActionKind abre el formulario para una acción (click en botones de Details).

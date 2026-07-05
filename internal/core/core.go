@@ -63,6 +63,10 @@ type Deployer interface {
 // capacidad está deshabilitada, no es un fallo del cloud.
 var ErrNoImagesConfig = errors.New("images not configured for this context")
 
+// ErrRepoNotFound indica que el repositorio no existe en el registry. A diferencia
+// de un fallo transitorio, es una respuesta definitiva: el deploy debe bloquearse.
+var ErrRepoNotFound = errors.New("repository not found in registry")
+
 // Repository es un repositorio de imágenes del registry del contexto.
 type Repository struct {
 	Name string // nombre real (con prefijo); la UI lo acorta con RepoPrefix

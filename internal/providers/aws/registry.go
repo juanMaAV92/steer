@@ -131,6 +131,10 @@ func (r *ECRRegistry) HasTag(ctx context.Context, repo, tag string) (bool, error
 		RepositoryName: awssdk.String(repo),
 		ImageIds:       []ecrtypes.ImageIdentifier{{ImageTag: awssdk.String(tag)}},
 	})
+	var repoNotFound *ecrtypes.RepositoryNotFoundException
+	if errors.As(err, &repoNotFound) {
+		return false, core.ErrRepoNotFound
+	}
 	var notFound *ecrtypes.ImageNotFoundException
 	if errors.As(err, &notFound) {
 		return false, nil

@@ -59,7 +59,8 @@ type tagVerdict int
 const (
 	tagOK tagVerdict = iota
 	tagNotFound
-	tagSkipped // sin [images] o registry con error: se despliega sin verificar
+	tagRepoNotFound // el repo no existe: bloquea con mensaje propio
+	tagSkipped      // sin [images] o registry con error: se despliega sin verificar
 )
 
 // tagValidatedMsg trae el veredicto de validateTagCmd para un service+tag dados.

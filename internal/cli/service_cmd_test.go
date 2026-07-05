@@ -240,3 +240,18 @@ func TestDeployWithoutImagesConfigStillDeploys(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"catalog/v2"}, fake.DeployCalls)
 }
+
+func TestDeployBlocksWhenRepoMissingCLI(t *testing.T) {
+	fake := &coretest.FakeDeployer{CurrentTagValue: "v1"}
+	reg := &coretest.FakeRegistry{HasTagErr: core.ErrRepoNotFound}
+	prev := newProviderFactoryFn
+	newProviderFactoryFn = func() providers.ProviderFactory {
+		return func(context.Context, config.Context) (providers.Provider, error) {
+			return fakeProvider{dep: fake, reg: reg}, nil
+		}
+	}
+	t.Cleanup(func() { newProviderFactoryFn = prev })
+	_, err := runRoot(t, "service", "deploy", "-s", "catalog", "-t", "v2", "-y")
+	require.ErrorContains(t, err, `repository "catalog" not found`)
+	require.Empty(t, fake.DeployCalls)
+}

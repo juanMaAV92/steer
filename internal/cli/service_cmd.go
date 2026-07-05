@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -151,6 +152,8 @@ func newServiceDeployCmd() *cobra.Command {
 			if reg, rerr := app.Registry(cmd.Context()); rerr == nil {
 				repo := app.Ctx.RepoName(service)
 				switch found, herr := reg.HasTag(cmd.Context(), repo, tag); {
+				case errors.Is(herr, core.ErrRepoNotFound):
+					return fmt.Errorf("repository %q not found (check images.repo_template)", repo)
 				case herr != nil:
 					_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
 						render.Warn("warning: registry check skipped: "+herr.Error()))
