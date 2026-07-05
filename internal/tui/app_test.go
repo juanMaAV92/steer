@@ -64,10 +64,20 @@ func TestServicesMsgPopulatesSidebar(t *testing.T) {
 
 func TestSidebarKeyboardNavigation(t *testing.T) {
 	m := newTestModel(sampleServices())
+	// cursor inicial: primer servicio ("api")
+	sel, ok := m.sidebar.selected()
+	require.True(t, ok)
+	require.Equal(t, "api", sel.Name)
+
 	m = mustUpdate(t, m, keyMsg("j"))
-	require.Equal(t, 1, m.sidebar.cursor)
+	sel, ok = m.sidebar.selected()
+	require.True(t, ok)
+	require.Equal(t, "cron", sel.Name) // 2º servicio ordenado
+
 	m = mustUpdate(t, m, keyMsg("k"))
-	require.Equal(t, 0, m.sidebar.cursor)
+	sel, ok = m.sidebar.selected()
+	require.True(t, ok)
+	require.Equal(t, "api", sel.Name)
 }
 
 func TestTabMovesFocusToPanel(t *testing.T) {
@@ -153,8 +163,37 @@ func TestMouseClickSelectsSidebarService(t *testing.T) {
 		Y:      targetY,
 	}
 	m = mustUpdate(t, m, click)
-	require.Equal(t, 2, m.sidebar.cursor)
+	sel, ok := m.sidebar.selected()
+	require.True(t, ok)
+	require.Equal(t, "web", sel.Name)
 	require.Equal(t, focusSidebar, m.focus)
+}
+
+// Click en el header de IMAGES la expande (todo es clickeable).
+func TestClickHeaderTogglesSection(t *testing.T) {
+	m := newTestModel(sampleServices())
+	out := m.View()
+	clickY := -1
+	for y, line := range strings.Split(out, "\n") {
+		if strings.Contains(stripANSI(line), "IMAGES (ECR)") {
+			clickY = y
+			break
+		}
+	}
+	require.GreaterOrEqual(t, clickY, 0)
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 3, Y: clickY}
+	m = mustUpdate(t, m, click)
+	require.Contains(t, stripANSI(m.View()), "coming soon") // se expandió
+}
+
+// enter/space con el cursor en un header lo togglea.
+func TestEnterOnHeaderToggles(t *testing.T) {
+	m := newTestModel(sampleServices())
+	for range 5 { // header SERVICES→…→header IMAGES
+		m = mustUpdate(t, m, keyMsg("j"))
+	}
+	m = mustUpdate(t, m, keyMsg("enter"))
+	require.Contains(t, stripANSI(m.View()), "coming soon")
 }
 
 func TestMouseWheelScrollsPanelWhenFocused(t *testing.T) {

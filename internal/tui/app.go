@@ -299,8 +299,13 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	// click en la zona del sidebar
 	if msg.X < m.sidebarW {
 		row := msg.Y - (topBarHeight + borderTop)
-		if hit, ok := m.sidebar.HitAtRow(row); ok && hit.Section == sectionServices {
-			m.sidebar.selectIndex(hit.Index)
+		if e, ok := m.sidebar.EntryAtRow(row); ok {
+			switch e.Kind {
+			case entryHeader:
+				m.sidebar.toggle(e.Section)
+			case entryService:
+				m.sidebar.selectEntry(e)
+			}
 			m.focus = focusSidebar
 		}
 		return nil
@@ -379,6 +384,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.sidebar.moveDown()
 	case key.Matches(msg, m.keys.Up):
 		m.sidebar.moveUp()
+	case key.Matches(msg, m.keys.Enter), key.Matches(msg, m.keys.Space):
+		if e, ok := m.sidebar.cursorEntry(); ok && e.Kind == entryHeader {
+			m.sidebar.toggle(e.Section)
+		}
 	}
 	return m, nil
 }

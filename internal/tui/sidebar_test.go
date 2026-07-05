@@ -17,56 +17,84 @@ func sampleServices() []core.ServiceStatus {
 	}
 }
 
-// TestSidebarNavigationClamps verifica que el cursor no excede los límites.
-// Orden alfabético post-sort: api(0), cron(1), web(2), worker(3).
-func TestSidebarNavigationClamps(t *testing.T) {
+// Con IMAGES/DATABASES colapsadas (default), las entradas navegables son:
+// [0]=header SERVICES, [1..4]=servicios, [5]=header IMAGES, [6]=header DATABASES.
+func TestSidebarNavEntriesAndInitialState(t *testing.T) {
 	s := newSidebar()
 	s.setServices(sampleServices())
-	require.Equal(t, 0, s.cursor)
-	s.moveUp() // clamp en 0
-	require.Equal(t, 0, s.cursor)
-	s.moveDown()
-	s.moveDown()
-	s.moveDown()
-	s.moveDown() // clamp en 3 (worker es el último)
-	require.Equal(t, 3, s.cursor)
+	e, ok := s.cursorEntry()
+	require.True(t, ok)
+	require.Equal(t, entryService, e.Kind) // cursor inicial: primer servicio
 	sel, ok := s.selected()
 	require.True(t, ok)
-	require.Equal(t, "worker", sel.Name)
+	require.Equal(t, "api", sel.Name) // selección inicial: primer servicio
 }
 
-// TestSidebarSelectIndex verifica selección directa por índice.
-// Orden: api(0), cron(1), web(2), worker(3).
-func TestSidebarSelectIndex(t *testing.T) {
+func TestSidebarCursorOverHeadersKeepsSelection(t *testing.T) {
 	s := newSidebar()
 	s.setServices(sampleServices())
-	s.selectIndex(1)
+	for range 4 { // baja hasta salir de los servicios
+		s.moveDown()
+	}
+	e, _ := s.cursorEntry()
+	require.Equal(t, entryHeader, e.Kind) // header IMAGES
+	require.Equal(t, sectionImages, e.Section)
+	sel, ok := s.selected()
+	require.True(t, ok)
+	require.Equal(t, "worker", sel.Name) // la selección quedó en el último servicio pisado
+}
+
+func TestSidebarToggleCollapsesServices(t *testing.T) {
+	s := newSidebar()
+	s.setServices(sampleServices())
+	s.toggle(sectionServices)
+	out := stripANSI(s.view(true))
+	require.Contains(t, out, "▸")
+	require.NotContains(t, out, "api") // sección colapsada oculta items
+	// navegación: ya solo hay 3 headers
+	s.moveDown()
+	e, _ := s.cursorEntry()
+	require.Equal(t, entryHeader, e.Kind)
+}
+
+func TestSidebarCollapsedByDefaultHidesStubs(t *testing.T) {
+	s := newSidebar()
+	s.setServices(sampleServices())
+	out := stripANSI(s.view(true))
+	require.NotContains(t, out, "coming soon") // IMAGES/DATABASES colapsadas
+	s.toggle(sectionImages)
+	require.Contains(t, stripANSI(s.view(true)), "coming soon")
+}
+
+func TestEntryAtRowMatchesRows(t *testing.T) {
+	s := newSidebar()
+	s.setServices(sampleServices())
+	rows := s.rows(true)
+	for i, r := range rows {
+		e, ok := s.EntryAtRow(i)
+		if r.Entry == nil {
+			require.False(t, ok, "row %d", i)
+		} else {
+			require.True(t, ok, "row %d", i)
+			require.Equal(t, *r.Entry, e)
+		}
+	}
+	_, ok := s.EntryAtRow(-1)
+	require.False(t, ok)
+	_, ok = s.EntryAtRow(len(rows) + 5)
+	require.False(t, ok)
+}
+
+func TestSidebarSelectionSurvivesReload(t *testing.T) {
+	s := newSidebar()
+	s.setServices(sampleServices())
+	s.moveDown() // cursor a "cron" (2º servicio ordenado) — lo selecciona
 	sel, _ := s.selected()
-	require.Equal(t, "cron", sel.Name) // índice 1 = cron tras el sort
-	s.selectIndex(99)                  // fuera de rango: no-op
-	sel, _ = s.selected()
 	require.Equal(t, "cron", sel.Name)
-}
-
-func TestSidebarSetServicesReclampsCursor(t *testing.T) {
-	s := newSidebar()
-	s.setServices(sampleServices())
-	s.selectIndex(2)
-	s.setServices([]core.ServiceStatus{{Name: "api"}}) // lista se encoge
-	require.Equal(t, 0, s.cursor)
-}
-
-func TestSidebarViewListsServicesAndSections(t *testing.T) {
-	s := newSidebar()
-	s.width, s.height = 30, 20
-	s.setServices(sampleServices())
-	out := s.view(true)
-	require.Contains(t, out, "SERVICES")
-	require.Contains(t, out, "api")
-	require.Contains(t, out, "worker")
-	require.Contains(t, out, "cron")
-	require.Contains(t, out, "IMAGES")
-	require.Contains(t, strings.ToLower(out), "coming soon")
+	s.setServices(sampleServices()) // reload: la selección persiste por nombre
+	sel, ok := s.selected()
+	require.True(t, ok)
+	require.Equal(t, "cron", sel.Name)
 }
 
 // TestSidebarSortOrder verifica que los servicios se muestran en orden alfabético.
@@ -85,34 +113,19 @@ func TestSidebarSortOrder(t *testing.T) {
 	require.Equal(t, "worker", s.services[3].Name)
 }
 
-// TestHitAtRow verifica que HitAtRow replica la estructura de view(): fila 0 header,
-// fila 1 en blanco, filas 2..n+1 son los servicios, y todo lo demás no es accionable.
-func TestHitAtRow(t *testing.T) {
-	s := newSidebar()
-	s.setServices(sampleServices())
-	for _, row := range []int{-1, 0, 1, 6, 99} {
-		_, ok := s.HitAtRow(row)
-		require.False(t, ok, "row %d", row)
-	}
-	hit, ok := s.HitAtRow(2)
-	require.True(t, ok)
-	require.Equal(t, sectionServices, hit.Section)
-	require.Equal(t, 0, hit.Index)
-	hit, ok = s.HitAtRow(5)
-	require.True(t, ok)
-	require.Equal(t, 3, hit.Index)
-}
-
 func TestSidebarViewStyledSections(t *testing.T) {
 	s := newSidebar()
-	s.width = 30
+	s.width, s.height = 30, 20
 	s.setServices(sampleServices())
 	out := stripANSI(s.view(true))
 	require.Contains(t, out, "SERVICES")
 	require.Contains(t, out, "(4)")
-	require.Contains(t, out, "coming soon")
+	require.NotContains(t, out, "coming soon") // IMAGES/DATABASES colapsadas por defecto
 	require.NotContains(t, out, "próximamente")
 	require.Contains(t, out, "···")
+	s.toggle(sectionImages)
+	out = stripANSI(s.view(true))
+	require.Contains(t, out, "coming soon")
 	// línea en blanco tras el header: la fila 1 está vacía y la 2 tiene el primer servicio
 	lines := strings.Split(out, "\n")
 	require.Equal(t, "", strings.TrimSpace(lines[1]))
