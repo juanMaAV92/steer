@@ -887,8 +887,22 @@ func (m Model) View() string {
 		pan := block(m.panelW).Render(panelBody)
 		body = lipgloss.JoinHorizontal(lipgloss.Top, side, vdivider(m.bodyH), pan)
 	}
+	// defensa en profundidad: lipgloss Height solo RELLENA, nunca trunca. Un
+	// contenido más alto que bodyH (p. ej. una tabla de tags larga) haría que el
+	// frame exceda la terminal, esta scrollearía y TODAS las coordenadas Y del
+	// mouse quedarían corridas. El recorte garantiza frame == alto de terminal.
+	body = clampLines(body, m.bodyH)
 	bottom := bottomBar(m.keys.shortHelp(), m.notice, m.status)
 	return top + "\n" + rule + "\n" + body + "\n" + rule + "\n" + bottom
+}
+
+// clampLines recorta s a n líneas como máximo.
+func clampLines(s string, n int) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) <= n {
+		return s
+	}
+	return strings.Join(lines[:n], "\n")
 }
 
 func (m Model) panelBody() string {

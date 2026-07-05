@@ -370,12 +370,16 @@ func (s sidebar) EntryAtVisibleRow(row int) (sidebarEntry, bool) {
 	return *rows[row].Entry, true
 }
 
+// view une las filas visibles SIN newline final: con la ventana de scroll llena
+// (exactamente height filas), un \n de cola haría el bloque una línea más alto que
+// bodyH, el frame excedería la terminal y todos los clicks se correrían una fila.
 func (s sidebar) view(focused bool) string {
-	var b strings.Builder
-	for _, r := range s.visibleRows(focused) {
-		b.WriteString(r.Line + "\n")
+	rows := s.visibleRows(focused)
+	lines := make([]string, len(rows))
+	for i, r := range rows {
+		lines[i] = r.Line
 	}
-	return b.String()
+	return strings.Join(lines, "\n")
 }
 
 // navEntries devuelve las entradas navegables en orden (headers + servicios visibles).
