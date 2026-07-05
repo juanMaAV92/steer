@@ -72,7 +72,7 @@ func TestSidebarCollapsedByDefaultHidesStubs(t *testing.T) {
 	out := stripANSI(s.view(true))
 	require.NotContains(t, out, "coming soon") // IMAGES/DATABASES colapsadas
 	s.toggle(sectionImages)
-	require.Contains(t, stripANSI(s.view(true)), "coming soon")
+	require.Contains(t, stripANSI(s.view(true)), "configure images in steer.toml")
 }
 
 func TestEntryAtVisibleRowMatchesRows(t *testing.T) {
@@ -184,7 +184,7 @@ func TestSidebarViewStyledSections(t *testing.T) {
 	require.Contains(t, out, "···")
 	s.toggle(sectionImages)
 	out = stripANSI(s.view(true))
-	require.Contains(t, out, "coming soon")
+	require.Contains(t, out, "configure images in steer.toml")
 	// línea en blanco tras el header: la fila 1 está vacía y la 2 tiene el primer servicio
 	lines := strings.Split(out, "\n")
 	require.Equal(t, "", strings.TrimSpace(lines[1]))
@@ -261,4 +261,91 @@ func TestSetFilterResyncsCursor(t *testing.T) {
 	require.Equal(t, entryService, e.Kind) // el cursor está SOBRE la selección
 	vis := s.visibleServices()
 	require.Equal(t, "api", vis[e.Index].Name)
+}
+
+func sampleRepos() []core.Repository {
+	return []core.Repository{{Name: "nao-v2-worker"}, {Name: "nao-v2-api"}}
+}
+
+func TestSetReposSortsAndNavigates(t *testing.T) {
+	s := newSidebar()
+	s.height = 30
+	s.repoPrefix = "nao-v2-"
+	s.setServices(sampleServices())
+	s.setRepos(sampleRepos())
+	s.collapsed[sectionImages] = false
+	// el primer repo visible es "api" (alfanumérico por nombre de display)
+	var repoEntries []sidebarEntry
+	for _, e := range s.navEntries() {
+		if e.Kind == entryRepo {
+			repoEntries = append(repoEntries, e)
+		}
+	}
+	require.Len(t, repoEntries, 2)
+	require.Equal(t, "nao-v2-api", s.visibleRepos()[repoEntries[0].Index].Name)
+}
+
+func TestRepoSelectionSetsLastSelected(t *testing.T) {
+	s := newSidebar()
+	s.height = 30
+	s.setServices(sampleServices())
+	s.setRepos(sampleRepos())
+	s.collapsed[sectionImages] = false
+	// navegar hasta el primer repo
+	for {
+		e, ok := s.cursorEntry()
+		require.True(t, ok)
+		if e.Kind == entryRepo {
+			break
+		}
+		s.moveDown()
+	}
+	repo, ok := s.selectedRepo()
+	require.True(t, ok)
+	require.Equal(t, "nao-v2-api", repo)
+	require.Equal(t, sectionImages, s.lastSelected)
+	// volver a un servicio devuelve lastSelected a services
+	for {
+		e, ok := s.cursorEntry()
+		require.True(t, ok)
+		if e.Kind == entryService {
+			break
+		}
+		s.moveUp()
+	}
+	require.Equal(t, sectionServices, s.lastSelected)
+}
+
+func TestFilterAppliesToReposToo(t *testing.T) {
+	s := newSidebar()
+	s.height = 30
+	s.repoPrefix = "nao-v2-"
+	s.setServices(sampleServices())
+	s.setRepos(sampleRepos())
+	s.collapsed[sectionImages] = false
+	s.setFilter("work")
+	require.Len(t, s.visibleRepos(), 1)
+	require.Equal(t, "nao-v2-worker", s.visibleRepos()[0].Name)
+}
+
+func TestImagesStatesRender(t *testing.T) {
+	s := newSidebar()
+	s.width = 40
+	s.collapsed[sectionImages] = false
+	join := func() string {
+		var b strings.Builder
+		for _, r := range s.rows(false) {
+			b.WriteString(stripANSI(r.Line) + "\n")
+		}
+		return b.String()
+	}
+	s.imagesState = imagesDisabled
+	require.Contains(t, join(), "configure images in steer.toml")
+	s.imagesState = imagesLoading
+	require.Contains(t, join(), "loading")
+	s.imagesState = imagesError
+	s.imagesErr = "boom"
+	require.Contains(t, join(), "boom")
+	s.imagesState = imagesReady
+	require.Contains(t, join(), "no repositories") // ready sin repos
 }

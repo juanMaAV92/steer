@@ -16,14 +16,25 @@ type entryKind int
 const (
 	entryHeader entryKind = iota
 	entryService
+	entryRepo
 )
 
-// sidebarEntry es una entrada navegable: header de sección o servicio.
+// sidebarEntry es una entrada navegable: header de sección, servicio o repo.
 type sidebarEntry struct {
 	Kind    entryKind
 	Section sidebarSection
-	Index   int // índice del servicio visible dentro de su sección (solo entryService)
+	Index   int // índice del servicio/repo visible dentro de su sección
 }
+
+// imagesState refleja el ciclo de vida de la sección IMAGES.
+type imagesState int
+
+const (
+	imagesDisabled imagesState = iota // sin bloque [images] en el contexto
+	imagesLoading
+	imagesReady
+	imagesError
+)
 
 // sidebarRow es una fila renderizada; Entry nil = decorativa (blanco/stub/indicador).
 type sidebarRow struct {
@@ -42,15 +53,21 @@ const (
 
 // sidebar es la columna izquierda: secciones colapsables con entradas navegables.
 type sidebar struct {
-	services      []core.ServiceStatus
-	collapsed     map[sidebarSection]bool
-	cursor        int    // índice sobre las entradas navegables (headers + servicios)
-	selectedName  string // nombre REAL del servicio seleccionado (persiste por nombre)
-	width, height int
-	scroll        int    // primera fila (de rows()) visible en la ventana
-	prefix        string // prefijo a ocultar en la visualización (ej. "nao-v2-dev-")
-	filterActive  bool   // true mientras se está tecleando el filtro
-	filterQuery   string // substring del filtro (aplicado sobre el nombre de display)
+	services         []core.ServiceStatus
+	collapsed        map[sidebarSection]bool
+	cursor           int    // índice sobre las entradas navegables (headers + servicios/repos)
+	selectedName     string // nombre REAL del servicio seleccionado (persiste por nombre)
+	width, height    int
+	scroll           int    // primera fila (de rows()) visible en la ventana
+	prefix           string // prefijo a ocultar en la visualización (ej. "nao-v2-dev-")
+	filterActive     bool   // true mientras se está tecleando el filtro
+	filterQuery      string // substring del filtro (aplicado sobre el nombre de display)
+	repos            []core.Repository
+	repoPrefix       string // prefijo de repos a ocultar (config RepoPrefix)
+	selectedRepoName string
+	lastSelected     sidebarSection // qué sección alimenta el panel derecho
+	imagesState      imagesState
+	imagesErr        string
 }
 
 func newSidebar() sidebar {
@@ -75,6 +92,9 @@ func (s *sidebar) setServices(svc []core.ServiceStatus) {
 	// la selección persiste por nombre; si desapareció (o no había), primer servicio
 	if _, ok := s.selected(); !ok && len(s.services) > 0 {
 		s.selectedName = s.services[0].Name
+		if s.lastSelected != sectionImages {
+			s.lastSelected = sectionServices
+		}
 	}
 	// cursor inicial/re-clamp: sobre el primer servicio si existe
 	nav := s.navEntries()
@@ -101,6 +121,51 @@ func (s sidebar) visibleServices() []core.ServiceStatus {
 		}
 	}
 	return out
+}
+
+// setRepos guarda los repos ordenados alfanuméricamente por nombre de display.
+func (s *sidebar) setRepos(repos []core.Repository) {
+	sorted := make([]core.Repository, len(repos))
+	copy(sorted, repos)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		di := strings.ToLower(strings.TrimPrefix(sorted[i].Name, s.repoPrefix))
+		dj := strings.ToLower(strings.TrimPrefix(sorted[j].Name, s.repoPrefix))
+		return di < dj
+	})
+	s.repos = sorted
+	s.imagesState = imagesReady
+	// la selección de repo persiste por nombre; si desapareció, se limpia
+	if _, ok := s.selectedRepo(); !ok {
+		s.selectedRepoName = ""
+	}
+	if s.cursor >= len(s.navEntries()) {
+		s.cursor = max(0, len(s.navEntries())-1)
+	}
+}
+
+// visibleRepos aplica el mismo filtro substring que los servicios.
+func (s sidebar) visibleRepos() []core.Repository {
+	if s.filterQuery == "" {
+		return s.repos
+	}
+	q := strings.ToLower(s.filterQuery)
+	var out []core.Repository
+	for _, r := range s.repos {
+		if strings.Contains(strings.ToLower(strings.TrimPrefix(r.Name, s.repoPrefix)), q) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// selectedRepo devuelve el repo seleccionado (nombre real) si sigue existiendo.
+func (s sidebar) selectedRepo() (string, bool) {
+	for _, r := range s.repos {
+		if r.Name == s.selectedRepoName {
+			return r.Name, true
+		}
+	}
+	return "", false
 }
 
 // setFilter fija el query y reajusta selección/cursor sobre los visibles resultantes.
@@ -189,11 +254,38 @@ func (s sidebar) rows(focused bool) []sidebarRow {
 		appendBlank()
 	}
 	// IMAGES
-	appendHeader(sectionImages, "IMAGES (ECR)", "···")
-	if !s.collapsed[sectionImages] {
-		out = append(out, sidebarRow{Line: render.Dim("  coming soon")})
+	visRepos := s.visibleRepos()
+	repoCount := "(" + strconv.Itoa(len(visRepos)) + "/" + strconv.Itoa(len(s.repos)) + ")"
+	if s.filterQuery == "" && !s.filterActive {
+		repoCount = "(" + strconv.Itoa(len(s.repos)) + ")"
 	}
-	appendBlank()
+	if s.imagesState != imagesReady {
+		repoCount = "···"
+	}
+	appendHeader(sectionImages, "IMAGES", repoCount)
+	if !s.collapsed[sectionImages] {
+		switch s.imagesState {
+		case imagesDisabled:
+			out = append(out, sidebarRow{Line: render.Dim("  configure images in steer.toml")})
+		case imagesLoading:
+			out = append(out, sidebarRow{Line: render.Dim("  loading…")})
+		case imagesError:
+			out = append(out, sidebarRow{Line: render.Dim("  registry error: " + s.imagesErr)})
+		case imagesReady:
+			if len(visRepos) == 0 {
+				out = append(out, sidebarRow{Line: render.Dim("  no repositories")})
+			}
+			for i, r := range visRepos {
+				under := nav == s.cursor
+				out = append(out, sidebarRow{Line: s.repoRow(r, under),
+					Entry: &sidebarEntry{Kind: entryRepo, Section: sectionImages, Index: i}})
+				nav++
+			}
+		}
+		appendBlank()
+	} else {
+		appendBlank()
+	}
 	// DATABASES
 	appendHeader(sectionDatabases, "DATABASES", "···")
 	if !s.collapsed[sectionDatabases] {
@@ -318,8 +410,13 @@ func (s *sidebar) moveCursor(delta int) {
 		return
 	}
 	s.cursor = min(max(s.cursor+delta, 0), len(nav)-1)
-	if e := nav[s.cursor]; e.Kind == entryService {
+	switch e := nav[s.cursor]; e.Kind {
+	case entryService:
 		s.selectedName = s.visibleServices()[e.Index].Name
+		s.lastSelected = sectionServices
+	case entryRepo:
+		s.selectedRepoName = s.visibleRepos()[e.Index].Name
+		s.lastSelected = sectionImages
 	}
 	s.ensureCursorVisible()
 }
@@ -342,8 +439,13 @@ func (s *sidebar) selectEntry(target sidebarEntry) {
 	for i, e := range s.navEntries() {
 		if e == target {
 			s.cursor = i
-			if e.Kind == entryService {
+			switch e.Kind {
+			case entryService:
 				s.selectedName = s.visibleServices()[e.Index].Name
+				s.lastSelected = sectionServices
+			case entryRepo:
+				s.selectedRepoName = s.visibleRepos()[e.Index].Name
+				s.lastSelected = sectionImages
 			}
 			break
 		}
@@ -407,4 +509,13 @@ func (s sidebar) serviceRow(svc core.ServiceStatus, underCursor bool) string {
 		width = lipgloss.Width(inner)
 	}
 	return lipgloss.NewStyle().Background(bg).Width(width).Render(inner)
+}
+
+// repoRow renderiza una fila de repo; bajo el cursor lleva la barra de selección.
+func (s sidebar) repoRow(r core.Repository, underCursor bool) string {
+	name := strings.TrimPrefix(r.Name, s.repoPrefix)
+	if !underCursor {
+		return "  " + render.Dim("▣") + " " + name
+	}
+	return s.barLine("▣ " + name)
 }

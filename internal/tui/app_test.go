@@ -27,8 +27,6 @@ func fakeFactory(dep core.Deployer) providers.ProviderFactory {
 
 // fakeFactoryWithRegistry adapta un core.Deployer y un core.Registry fake a
 // una ProviderFactory (para tests de la capacidad de imágenes).
-//
-//nolint:unused // lo consumen los tests de la capacidad IMAGES (hitos siguientes)
 func fakeFactoryWithRegistry(dep core.Deployer, reg core.Registry) providers.ProviderFactory {
 	return func(context.Context, config.Context) (providers.Provider, error) {
 		return fakeProvider{dep: dep, reg: reg}, nil
@@ -59,6 +57,21 @@ func newTestModel(services []core.ServiceStatus) Model {
 	fake := &coretest.FakeDeployer{Services: services}
 	factory := fakeFactory(fake)
 	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
+	m := New(context.Background(), factory, []config.Context{cur}, cur)
+	m.sidebar.setServices(services)
+	m, _ = applySize(m, 120, 40)
+	return m
+}
+
+// newTestModelWithRegistry es como newTestModel pero con un registry fake y un
+// contexto con bloque [images] (para probar la capacidad IMAGES).
+func newTestModelWithRegistry(services []core.ServiceStatus, reg core.Registry) Model {
+	fake := &coretest.FakeDeployer{Services: services}
+	factory := fakeFactoryWithRegistry(fake, reg)
+	cur := config.Context{
+		Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true,
+		Images: &config.ImagesConfig{RepoTemplate: "{name}"},
+	}
 	m := New(context.Background(), factory, []config.Context{cur}, cur)
 	m.sidebar.setServices(services)
 	m, _ = applySize(m, 120, 40)
@@ -196,7 +209,7 @@ func TestClickHeaderTogglesSection(t *testing.T) {
 	out := m.View()
 	clickY := -1
 	for y, line := range strings.Split(out, "\n") {
-		if strings.Contains(stripANSI(line), "IMAGES (ECR)") {
+		if strings.Contains(stripANSI(line), "IMAGES") {
 			clickY = y
 			break
 		}
@@ -204,7 +217,7 @@ func TestClickHeaderTogglesSection(t *testing.T) {
 	require.GreaterOrEqual(t, clickY, 0)
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 3, Y: clickY}
 	m = mustUpdate(t, m, click)
-	require.Contains(t, stripANSI(m.View()), "coming soon") // se expandió
+	require.Contains(t, stripANSI(m.View()), "configure images in steer.toml") // se expandió
 }
 
 // enter/space con el cursor en un header lo togglea.
@@ -223,7 +236,7 @@ func TestEnterOnHeaderToggles(t *testing.T) {
 	m = mustUpdate(t, m, keyMsg("enter"))
 	e, _ := m.sidebar.cursorEntry()
 	require.Equal(t, sectionImages, e.Section) // el toggle recoloca el cursor en SU header
-	require.Contains(t, stripANSI(m.View()), "coming soon")
+	require.Contains(t, stripANSI(m.View()), "configure images in steer.toml")
 }
 
 func TestMouseWheelScrollsPanelWhenFocused(t *testing.T) {
@@ -687,4 +700,17 @@ func TestFormSingleColumnClickNoop(t *testing.T) {
 	m = updated.(Model)
 	require.NotNil(t, m.form)
 	require.Nil(t, cmd)
+}
+
+// TestSidebarShowsReposFromRegistry: los repos llegan por reposMsg y se ven en IMAGES.
+func TestSidebarShowsReposFromRegistry(t *testing.T) {
+	reg := &coretest.FakeRegistry{Repos: []core.Repository{{Name: "api"}, {Name: "worker"}}}
+	m := newTestModelWithRegistry(sampleServices(), reg)
+	m = mustUpdate(t, m, reposMsg{repos: reg.Repos})
+	m.sidebar.collapsed[sectionImages] = false
+	out := stripANSI(m.View())
+	require.Contains(t, out, "IMAGES")
+	require.Contains(t, out, "api")
+	require.Contains(t, out, "worker")
+	require.NotContains(t, out, "coming soon")
 }

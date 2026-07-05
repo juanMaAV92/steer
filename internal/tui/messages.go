@@ -11,6 +11,12 @@ type servicesMsg struct {
 	err      error
 }
 
+type reposMsg struct {
+	repos    []core.Repository
+	disabled bool // contexto sin bloque [images]
+	err      error
+}
+
 type tickMsg struct{}
 
 type actionDoneMsg struct {

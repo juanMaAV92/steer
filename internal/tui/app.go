@@ -93,6 +93,10 @@ func New(ctx context.Context, factory providers.ProviderFactory, contexts []conf
 		loading: err == nil,
 	}
 	m.sidebar.prefix = current.Prefix()
+	m.sidebar.repoPrefix = current.RepoPrefix()
+	if err == nil && current.Images != nil {
+		m.sidebar.imagesState = imagesLoading
+	}
 	if err != nil {
 		m.err = err
 	}
@@ -103,7 +107,7 @@ func (m Model) Init() tea.Cmd {
 	if m.depErr != nil {
 		return nil
 	}
-	return tea.Batch(m.loadServicesCmd(), tickCmd())
+	return tea.Batch(m.loadServicesCmd(), m.loadReposCmd(), tickCmd())
 }
 
 func (m Model) loadServicesCmd() tea.Cmd {
@@ -112,6 +116,24 @@ func (m Model) loadServicesCmd() tea.Cmd {
 	return func() tea.Msg {
 		s, err := dep.ListServices(ctx)
 		return servicesMsg{services: s, err: err}
+	}
+}
+
+// loadReposCmd pide los repos del registry; los repos no se refrescan por tick
+// (cambian poco): solo al entrar al contexto y con Refresh.
+func (m Model) loadReposCmd() tea.Cmd {
+	provider := m.provider
+	ctx := m.runCtx
+	return func() tea.Msg {
+		reg, err := provider.Registry()
+		if errors.Is(err, core.ErrNoImagesConfig) {
+			return reposMsg{disabled: true}
+		}
+		if err != nil {
+			return reposMsg{err: err}
+		}
+		repos, err := reg.ListRepositories(ctx)
+		return reposMsg{repos: repos, err: err}
 	}
 }
 
@@ -162,6 +184,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.sidebar.setServices(msg.services)
+		return m, nil
+
+	case reposMsg:
+		switch {
+		case msg.disabled:
+			m.sidebar.imagesState = imagesDisabled
+		case msg.err != nil:
+			m.sidebar.imagesState = imagesError
+			m.sidebar.imagesErr = msg.err.Error()
+		default:
+			m.sidebar.setRepos(msg.repos)
+		}
 		return m, nil
 
 	case tickMsg:
@@ -418,7 +452,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.status = ""
 		m.notice = ""
-		return m, m.loadServicesCmd()
+		if m.current.Images != nil {
+			m.sidebar.imagesState = imagesLoading
+		}
+		return m, tea.Batch(m.loadServicesCmd(), m.loadReposCmd())
 	case key.Matches(msg, m.keys.Context):
 		// abre el overlay de selección de contexto
 		m.overlay = newPickerOverlay(m.keys, m.contexts, m.current.Name)
@@ -491,6 +528,10 @@ func (m Model) applyContextSwitch(sel config.Context) (tea.Model, tea.Cmd) {
 	m.current = sel
 	m.sidebar = newSidebar()
 	m.sidebar.prefix = sel.Prefix()
+	m.sidebar.repoPrefix = sel.RepoPrefix()
+	if sel.Images != nil {
+		m.sidebar.imagesState = imagesLoading
+	}
 	m.sidebar.width = m.sidebarW - 1
 	m.loading = true
 	m.notice = ""
@@ -501,7 +542,7 @@ func (m Model) applyContextSwitch(sel config.Context) (tea.Model, tea.Cmd) {
 	m.deploy.Reset()
 	m.events.Reset()
 	m.tabs.Active = panel.TabDetails
-	return m, m.loadServicesCmd()
+	return m, tea.Batch(m.loadServicesCmd(), m.loadReposCmd())
 }
 
 func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
