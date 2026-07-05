@@ -1,6 +1,9 @@
 # Steer — Diseño V1
 
-**Estado:** Aprobado para escribir plan de implementación
+**Estado:** Documento vivo — visión original de 2026-06, secciones 4/6/7 realineadas con
+lo construido el 2026-07-05. El estado real por hito vive en
+[`docs/superpowers/plans/2026-06-15-roadmap.md`](superpowers/plans/2026-06-15-roadmap.md);
+la paridad CLI↔TUI en [`docs/parity.md`](parity.md).
 
 ---
 
@@ -128,22 +131,27 @@ Estilo **sustantivo-verbo**: el recurso primero, la acción después. Los nombre
 **capacidad**, no por servicio AWS, para que el mismo comando funcione cuando se añadan
 otros providers.
 
-| Comando | Capacidad | Subcomandos (funciones) |
-|---|---|---|
-| `steer service` | Servicios / contenedores | `ls` · `status` · `watch` · `deploy` · `redeploy` · `rollback` · `scale` · `promote` |
-| `steer registry` | Registro de imágenes | `ls` · `images` · `build` · `prune` |
-| `steer db` | Base de datos | `status` · `slow-queries` · `tunnel` |
-| `steer storage` | Almacenamiento de objetos | `ls` |
-| `steer queue` | Colas | `ls` · `watch` |
-| `steer host` | Hosts / instancias | `ls` · `connect` |
-| `steer env` | Entornos (encender/apagar) | `ls` · `up` · `down` |
-| `steer assets` | Estático / CDN | `deploy` · `url` · `info` · `invalidate` |
+| Comando | Capacidad | Subcomandos construidos | Pendientes |
+|---|---|---|---|
+| `steer service` (alias `svc`) | Servicios / contenedores | `status` (alias `ls`, `-w`) · `deploy` (`-w`, validado contra registry, detección de atasco) · `scale` · `rollback` | `logs` · `events` · `redeploy` · `promote` |
+| `steer image` (alias `img`) | Registro de imágenes | `ls` · `tags` (con marcador del tag desplegado) | — (`build`/`prune` fuera de alcance V1: solo lectura) |
+| `steer db` | Base de datos | — | `status` · `slow-queries` · `tunnel` |
+| `steer storage` | Almacenamiento de objetos | — | `ls` |
+| `steer queue` | Colas | — | `ls` · `watch` |
+| `steer host` | Hosts / instancias | — | `ls` · `connect` |
+| `steer env` | Entornos (encender/apagar) | — | `ls` · `up` · `down` |
+| `steer assets` | Estático / CDN | — | `deploy` · `url` · `info` · `invalidate` |
+
+Notas de evolución respecto al diseño original: la capacidad de imágenes se llama
+`image` (no `registry`) — el sustantivo que piensa el usuario; `watch` es el flag `-w`
+de `status`/`deploy`, no un subcomando; el alias de camino caliente `steer deploy` no se
+construyó (YAGNI hasta que alguien lo pida).
 
 Global:
 - `steer tui` — abre el dashboard interactivo.
-- `steer config init|validate` — crea/valida `steer.toml`.
-- `-e/--env` — selecciona el entorno (resuelve perfil/sesión AWS).
-- Alias de camino caliente: `steer deploy` → `steer service deploy`.
+- `steer config init|validate` — crea/valida `steer.toml` (CLI-only por diseño; ver `docs/parity.md`).
+- `--context` — selecciona el contexto (cuenta+cluster+credencial); también
+  `STEER_CONTEXT` o `default_context` del toml. `-e/--env` quedó como alias deprecado.
 
 ---
 
@@ -153,8 +161,9 @@ Global:
 |---|---|---|
 | `internal/config` | Cargar/validar `steer.toml`; resolver entorno → sesión AWS | — |
 | `internal/core` | Interfaces de capacidad (`Deployer`, `Registry`, `ObjectStore`, `LogSource`) | — |
-| `internal/providers/aws` | Implementación AWS (un subpaquete por capacidad: service, registry, db, storage, queue, host, env, assets) | `core`, `config` |
-| `cmd/` | Comandos Cobra (service, registry, db…) | `core`, `config`, `render` |
+| `internal/providers` | Fábrica de providers por contexto (`Provider` bundle con sesión cacheada: `Deployer()`, `Registry()`, …) | `core`, `config` |
+| `internal/providers/aws` | Implementación AWS (un archivo por capacidad: ecs.go, registry.go, …) | `core`, `config` |
+| `internal/cli` | Comandos Cobra (service, image, config, tui) — `cmd/steer` solo los registra | `core`, `config`, `render` |
 | `internal/tui` | App Bubble Tea: dashboard híbrido + paleta ⌘k + pickers interactivos | `core`, `config`, `render` |
 | `internal/render` | Estilos compartidos (Lipgloss): tablas, colores de estado, spinners | — |
 
@@ -164,25 +173,36 @@ Cada unidad tiene un propósito claro y se entiende sin leer las internas de las
 
 ## 6. Configuración (`steer.toml`)
 
-Toda la información específica de un entorno (cuentas, roles, mapeo entorno→perfil,
+Toda la información específica de un entorno (cuentas, roles, credenciales,
 convenciones de naming) vive en config, no en código. Se busca en el repo actual o en
-`~/.config/steer/steer.toml`. Valores de ejemplo:
+`~/.config/steer/steer.toml`.
+
+El esquema evolucionó del original `[providers.aws.environments.*]` al modelo de
+**contextos** (hito multi-context): cada contexto = cloud + credencial + cluster +
+templates + writable, y las capacidades opcionales anidan su bloque (patrón que fijó el
+hito images). Valores de ejemplo:
 
 ```toml
-[providers.aws.environments.staging]
-profile    = "staging"
-account_id = "000000000000"
-role_arn   = "arn:aws:iam::000000000000:role/your-deployer-role"
-writable   = true
+default_context = "staging"
 
-[providers.aws.environments.prod]
-profile  = "prod"
-writable = false          # solo lectura: bloquea comandos mutantes en prod
+[contexts.staging]
+cloud            = "aws"
+profile          = "staging"
+role_arn         = "arn:aws:iam::000000000000:role/your-deployer-role"
+cluster          = "myteam-staging"
+service_template = "myteam-staging-{name}"
+writable         = true
 
-[providers.aws.naming]
-# plantillas que resuelven un nombre corto a un recurso AWS real
-cluster_template = "{env}-cluster"
-service_template = "{name}"
+  # capacidad opcional: habilita la sección IMAGES y el tag-picker del deploy
+  [contexts.staging.images]
+  repo_template = "myteam-{name}"
+
+[contexts.prod]
+cloud            = "aws"
+profile          = "prod"
+cluster          = "myteam-prod"
+service_template = "myteam-prod-{name}"
+writable         = false   # solo lectura: bloquea comandos mutantes en prod
 ```
 
 El `steer.toml` con valores reales **no** se commitea (está en `.gitignore`); el repo
@@ -194,27 +214,35 @@ incluye `steer.example.toml`.
 
 ### CLI (scriptable, CI-friendly)
 ```
-steer -e stg service deploy -s my-service -t v1.2.3 -y    # cero prompts
-steer registry build -s my-service
+steer --context stg service deploy -s my-service -t v1.2.3 -y    # cero prompts
+steer image tags -r my-service
 steer service status
 ```
+El deploy **valida el tag contra el registry** antes de tocar el cloud (bloquea tags o
+repos inexistentes; degrada con warning si el registry no está disponible) y `-w` sigue
+el rollout en vivo, cortando con sugerencia de rollback si detecta un atasco de pull.
 
 ### Deploy interactivo (cuando faltan argumentos)
-Flujo de 3 pasos:
-1. **Selección de servicios** — picker con fuzzy-filter + multi-select, poblado en vivo
-   desde el cluster; muestra estado running/desired por servicio.
-2. **Selección de tag** — lista los tags reales del registry con antigüedad; filtrable.
-   El tag se elige **por servicio**.
-3. **Confirmación + progreso en vivo** — resumen de lo que se va a desplegar y progreso
-   por servicio.
+Como se construyó (el multi-select por servicio del diseño original quedó en YAGNI —
+nadie lo ha pedido; un servicio por deploy):
+1. **Selección de servicio** — picker poblado en vivo desde el cluster.
+2. **Tag** — en el TUI, picker filtrable con los tags reales del registry (antigüedad y
+   marcador del desplegado); en CLI, prompt de texto validado igual que el modo con flags.
+3. **Confirmación + progreso en vivo** — preview de qué va a pasar; eventos del rollout
+   en tiempo real.
 
 El modo no-interactivo (`-s ... -t ... -y`) queda intacto para CI/scripts.
 
-### TUI (`steer tui`) — home híbrido
-- **Dashboard** como pantalla principal: salud de todo (servicios, db, colas) de un
-  vistazo con colores de estado; `enter` para drill-down.
-- **Paleta de comandos (⌘k)** siempre disponible para saltar directo a cualquier acción.
-  Todo accesible por teclado.
+### TUI (`steer tui`) — dashboard estilo lazydocker
+Como se construyó (rediseño 2026-06-28 + iteraciones):
+- **Sidebar por secciones** (SERVICES · IMAGES · DATABASES) colapsables, con filtro `/`
+  en vivo y scroll con indicadores; **todo clickeable** (mouse de primera clase) además
+  del teclado completo.
+- **Panel derecho** con pestañas Details/Events/Logs para servicios y tabla de TAGS para
+  repos; acciones como botones + **formulario inline** (no modal): deploy con tag-picker
+  y validación, scale, rollback.
+- **Switcher de contexto** en vivo (`c` o click en la barra superior).
+- **Paleta de comandos (⌘k)** — pendiente (hito 06b); la costura de overlays ya la admite.
 
 ---
 
@@ -239,7 +267,9 @@ Construcción por capacidades, priorizando valor:
 
 ## 10. Seguridad
 
-- **Guard de producción global:** cualquier comando con `-e prod` pide confirmación.
-  Operaciones prohibidas en prod (p.ej. `env up/down`) añaden su propio guard, gobernado
-  por `writable=false` en la config del entorno.
+- **Guard de solo-lectura por contexto:** `writable=false` bloquea TODA operación
+  mutante en ese contexto (deploy/scale/rollback), en CLI y TUI por igual. Los comandos
+  mutantes en contextos writable piden confirmación salvo `-y`. Además el deploy valida
+  el tag contra el registry antes de tocar el cloud, y el watch detecta rollouts
+  atascados sugiriendo rollback (diseño 2026-07-05-deploy-seguro).
 - La config con datos sensibles **no** se commitea; el repo incluye `steer.example.toml`.

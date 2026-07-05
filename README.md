@@ -99,8 +99,9 @@ AWS service, so the same command keeps working when other clouds are added.
 1. ✅ Foundation — config + AWS session + capability interfaces + CLI skeleton
 2. ✅ **`service`** — deploy / scale / rollback / status with preview and watch
 3. ✅ TUI dashboard — mouse-driven, multi-context, live rollouts
-4. ⏳ `registry` (ECR) — next up
-5. `db`, `queue`, `storage`, `host`, `env`, `assets` · `⌘k` command palette
+4. ✅ **`image`** (ECR) — repos & tags in TUI and CLI, deploy tag-picker, registry-validated deploys, stuck-rollout detection
+5. ⏳ Distribution (Homebrew) & onboarding wizard — next up
+6. `service logs/events`, `db`, `promote`, `⌘k` palette, minor capabilities
 
 See [`docs/superpowers/plans/2026-06-15-roadmap.md`](docs/superpowers/plans/2026-06-15-roadmap.md).
 
