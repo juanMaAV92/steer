@@ -76,28 +76,40 @@ type sidebarHit struct {
 	Index   int // índice dentro de la sección (solo services tiene filas hoy)
 }
 
-// HitAtRow replica la estructura de view(): header SERVICES (fila 0), un servicio por
-// fila, y después solo headers/stubs no accionables. Cuando IMAGES/DATABASES tengan
-// filas reales, este mapeo crece con ellas (mismo patrón que contextPicker.indexAtLine).
+// HitAtRow replica la estructura de view(): fila 0 header, fila 1 en blanco,
+// filas 2..n+1 los servicios; el resto no es accionable.
 func (s sidebar) HitAtRow(row int) (sidebarHit, bool) {
-	if row < 1 { // fila 0: header "SERVICES (n)"
+	if row < 2 {
 		return sidebarHit{}, false
 	}
-	if idx := row - 1; idx < len(s.services) {
+	if idx := row - 2; idx < len(s.services) {
 		return sidebarHit{Section: sectionServices, Index: idx}, true
 	}
-	// blanco, IMAGES header/stub, blanco, DATABASES header/stub: no accionables
 	return sidebarHit{}, false
 }
 
-func (s sidebar) view() string {
+// sectionHeader alinea el título a la izquierda y el sufijo a la derecha del ancho del
+// sidebar. El título se ilumina en cian de marca cuando la sección tiene el foco.
+func (s sidebar) sectionHeader(title, suffix string, focused bool) string {
+	fill := s.width - lipgloss.Width(title) - lipgloss.Width(suffix)
+	if fill < 1 {
+		fill = 1
+	}
+	t := render.Dim(title)
+	if focused {
+		t = render.Brand(title)
+	}
+	return t + strings.Repeat(" ", fill) + render.Dim(suffix)
+}
+
+func (s sidebar) view(focused bool) string {
 	var b strings.Builder
-	b.WriteString(render.Bold("SERVICES") + render.Dim("  ("+strconv.Itoa(len(s.services))+")") + "\n")
+	b.WriteString(s.sectionHeader("SERVICES", "("+strconv.Itoa(len(s.services))+")", focused) + "\n\n")
 	for i, svc := range s.services {
 		b.WriteString(s.serviceRow(svc, i == s.cursor) + "\n")
 	}
-	b.WriteString("\n" + render.Dim("IMAGES (ECR)") + "\n" + render.Dim("  (próximamente)") + "\n")
-	b.WriteString("\n" + render.Dim("DATABASES") + "\n" + render.Dim("  (próximamente)") + "\n")
+	b.WriteString("\n" + s.sectionHeader("IMAGES (ECR)", "···", false) + "\n" + render.Dim("  coming soon") + "\n")
+	b.WriteString("\n" + s.sectionHeader("DATABASES", "···", false) + "\n" + render.Dim("  coming soon") + "\n")
 	return b.String()
 }
 

@@ -60,13 +60,13 @@ func TestSidebarViewListsServicesAndSections(t *testing.T) {
 	s := newSidebar()
 	s.width, s.height = 30, 20
 	s.setServices(sampleServices())
-	out := s.view()
+	out := s.view(true)
 	require.Contains(t, out, "SERVICES")
 	require.Contains(t, out, "api")
 	require.Contains(t, out, "worker")
 	require.Contains(t, out, "cron")
 	require.Contains(t, out, "IMAGES")
-	require.Contains(t, strings.ToLower(out), "próximamente")
+	require.Contains(t, strings.ToLower(out), "coming soon")
 }
 
 // TestSidebarSortOrder verifica que los servicios se muestran en orden alfabético.
@@ -85,33 +85,38 @@ func TestSidebarSortOrder(t *testing.T) {
 	require.Equal(t, "worker", s.services[3].Name)
 }
 
-// TestHitAtRow verifica que HitAtRow replica la estructura de view(): fila 0 es el
-// header SERVICES, filas 1..n son los servicios, y todo lo demás no es accionable.
+// TestHitAtRow verifica que HitAtRow replica la estructura de view(): fila 0 header,
+// fila 1 en blanco, filas 2..n+1 son los servicios, y todo lo demás no es accionable.
 func TestHitAtRow(t *testing.T) {
 	s := newSidebar()
-	s.setServices(sampleServices()) // 4 servicios ordenados
-	// fila 0 = header SERVICES → no accionable
-	_, ok := s.HitAtRow(0)
-	require.False(t, ok)
-	// filas 1..4 = servicios 0..3
-	hit, ok := s.HitAtRow(1)
+	s.setServices(sampleServices())
+	for _, row := range []int{-1, 0, 1, 6, 99} {
+		_, ok := s.HitAtRow(row)
+		require.False(t, ok, "row %d", row)
+	}
+	hit, ok := s.HitAtRow(2)
 	require.True(t, ok)
 	require.Equal(t, sectionServices, hit.Section)
 	require.Equal(t, 0, hit.Index)
-	hit, ok = s.HitAtRow(4)
+	hit, ok = s.HitAtRow(5)
 	require.True(t, ok)
 	require.Equal(t, 3, hit.Index)
-	// fila 5 = línea en blanco antes de IMAGES → no accionable
-	_, ok = s.HitAtRow(5)
-	require.False(t, ok)
-	// headers/stubs de IMAGES/DATABASES → no accionables
-	_, ok = s.HitAtRow(6)
-	require.False(t, ok)
-	// fuera de rango
-	_, ok = s.HitAtRow(-1)
-	require.False(t, ok)
-	_, ok = s.HitAtRow(99)
-	require.False(t, ok)
+}
+
+func TestSidebarViewStyledSections(t *testing.T) {
+	s := newSidebar()
+	s.width = 30
+	s.setServices(sampleServices())
+	out := stripANSI(s.view(true))
+	require.Contains(t, out, "SERVICES")
+	require.Contains(t, out, "(4)")
+	require.Contains(t, out, "coming soon")
+	require.NotContains(t, out, "próximamente")
+	require.Contains(t, out, "···")
+	// línea en blanco tras el header: la fila 1 está vacía y la 2 tiene el primer servicio
+	lines := strings.Split(out, "\n")
+	require.Equal(t, "", strings.TrimSpace(lines[1]))
+	require.Contains(t, lines[2], "api")
 }
 
 // TestSidebarPrefixStrip verifica que el prefijo se oculta en la visualización
@@ -124,7 +129,7 @@ func TestSidebarPrefixStrip(t *testing.T) {
 		{Name: "nao-v2-dev-billing", Running: 2, Desired: 2, Tag: "v1"},
 	})
 
-	out := s.view()
+	out := s.view(true)
 
 	// los nombres cortos deben aparecer
 	require.Contains(t, out, "audit-ms")

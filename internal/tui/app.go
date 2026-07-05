@@ -512,11 +512,11 @@ func (m Model) View() string {
 	var body string
 	if m.singleColumn {
 		// apilado: sidebar arriba, panel abajo (cada uno la mitad del alto)
-		side := sideStyle.Width(m.sidebarW).Height(m.bodyH / 2).Render(m.sidebar.view())
+		side := sideStyle.Width(m.sidebarW).Height(m.bodyH / 2).Render(m.sidebar.view(m.focus == focusSidebar))
 		pan := panelStyle.Width(m.panelW).Height(m.bodyH / 2).Render(panelBody)
 		body = lipgloss.JoinVertical(lipgloss.Left, side, pan)
 	} else {
-		side := sideStyle.Width(m.sidebarW).Height(m.bodyH).Render(m.sidebar.view())
+		side := sideStyle.Width(m.sidebarW).Height(m.bodyH).Render(m.sidebar.view(m.focus == focusSidebar))
 		pan := panelStyle.Width(m.panelW).Height(m.bodyH).Render(panelBody)
 		body = lipgloss.JoinHorizontal(lipgloss.Top, side, pan)
 	}
