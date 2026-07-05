@@ -23,6 +23,7 @@ func main() {
 	root := cli.NewRootCmd(version)
 	root.AddCommand(cli.NewConfigCmd())
 	root.AddCommand(cli.NewServiceCmd())
+	root.AddCommand(cli.NewImageCmd())
 	root.AddCommand(cli.NewTuiCmd())
 	if err := root.ExecuteContext(ctx); err != nil {
 		// Una cancelación por señal es una salida limpia (Ctrl+C), no un error real.

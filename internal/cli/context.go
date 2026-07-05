@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/juanMaAV92/steer/internal/config"
@@ -40,4 +41,21 @@ func (a *AppContext) Deployer(ctx context.Context) (core.Deployer, error) {
 		a.provider = p
 	}
 	return a.provider.Deployer()
+}
+
+// Registry construye (una vez) el provider y devuelve su Registry.
+// core.ErrNoImagesConfig se traduce a un mensaje accionable con el snippet TOML.
+func (a *AppContext) Registry(ctx context.Context) (core.Registry, error) {
+	if a.provider == nil {
+		p, err := a.Factory(ctx, a.Ctx)
+		if err != nil {
+			return nil, err
+		}
+		a.provider = p
+	}
+	reg, err := a.provider.Registry()
+	if errors.Is(err, core.ErrNoImagesConfig) {
+		return nil, fmt.Errorf("context %q has no images config; add to steer.toml:\n\n  [contexts.%s.images]\n  repo_template = \"myteam-{name}\"", a.Ctx.Name, a.Ctx.Name)
+	}
+	return reg, err
 }

@@ -35,6 +35,7 @@ func runRootCtx(t *testing.T, ctx context.Context, args ...string) (string, erro
 	root := NewRootCmd("test")
 	root.AddCommand(NewConfigCmd())
 	root.AddCommand(NewServiceCmd())
+	root.AddCommand(NewImageCmd())
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
