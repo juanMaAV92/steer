@@ -146,6 +146,22 @@ func newServiceDeployCmd() *cobra.Command {
 			}
 			realName := app.Ctx.ServiceName(service)
 
+			// validación del tag contra el registry: estricta si no existe,
+			// degradable si el registry no está disponible (nunca bloquea CI).
+			if reg, rerr := app.Registry(cmd.Context()); rerr == nil {
+				repo := app.Ctx.RepoName(service)
+				switch found, herr := reg.HasTag(cmd.Context(), repo, tag); {
+				case herr != nil:
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
+						render.Warn("warning: registry check skipped: "+herr.Error()))
+				case !found:
+					return fmt.Errorf("tag %q not found in repository %q", tag, repo)
+				}
+			} else {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
+					render.Warn("warning: registry check skipped (images not configured or registry unavailable)"))
+			}
+
 			current, err := dep.CurrentTag(cmd.Context(), realName)
 			if err != nil {
 				return err

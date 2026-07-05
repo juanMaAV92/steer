@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -166,4 +167,36 @@ func TestWatchRolloutStopsOnCancel(t *testing.T) {
 	var buf bytes.Buffer
 	err := watchRollout(ctx, &buf, fake, "svc", 1)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestDeployBlocksUnknownTag(t *testing.T) {
+	reg := &coretest.FakeRegistry{Tags: map[string][]core.ImageTag{"catalog": sampleTags()}}
+	withFakeRegistry(t, reg)
+	_, err := runRoot(t, "service", "deploy", "-s", "catalog", "-t", "nope", "-y")
+	require.ErrorContains(t, err, `tag "nope" not found in repository "catalog"`)
+	require.Equal(t, []string{"catalog/nope"}, reg.HasTagCalls)
+}
+
+func TestDeployDegradesOnRegistryError(t *testing.T) {
+	fake := &coretest.FakeDeployer{CurrentTagValue: "v1"}
+	reg := &coretest.FakeRegistry{HasTagErr: errors.New("throttled")}
+	prev := newProviderFactoryFn
+	newProviderFactoryFn = func() providers.ProviderFactory {
+		return func(context.Context, config.Context) (providers.Provider, error) {
+			return fakeProvider{dep: fake, reg: reg}, nil
+		}
+	}
+	t.Cleanup(func() { newProviderFactoryFn = prev })
+	out, err := runRoot(t, "service", "deploy", "-s", "catalog", "-t", "v2", "-y")
+	require.NoError(t, err)
+	require.Equal(t, []string{"catalog/v2"}, fake.DeployCalls) // desplegó igual
+	_ = out                                                    // el warning va a stderr; el flujo estándar no cambia
+}
+
+func TestDeployWithoutImagesConfigStillDeploys(t *testing.T) {
+	fake := &coretest.FakeDeployer{CurrentTagValue: "v1"}
+	withFakeDeployer(t, fake) // fakeProvider.reg nil → ErrNoImagesConfig
+	_, err := runRoot(t, "service", "deploy", "-s", "catalog", "-t", "v2", "-y")
+	require.NoError(t, err)
+	require.Equal(t, []string{"catalog/v2"}, fake.DeployCalls)
 }
