@@ -132,6 +132,19 @@ func TestSidebarViewStyledSections(t *testing.T) {
 	require.Contains(t, lines[2], "api")
 }
 
+// Un reload periódico NO debe expulsar el cursor de un header.
+func TestSetServicesKeepsCursorOnHeader(t *testing.T) {
+	s := newSidebar()
+	s.setServices(sampleServices())
+	s.moveUp() // del primer servicio al header SERVICES (cursor 0)
+	e, _ := s.cursorEntry()
+	require.Equal(t, entryHeader, e.Kind)
+	s.setServices(sampleServices()) // tick de refresh
+	e, ok := s.cursorEntry()
+	require.True(t, ok)
+	require.Equal(t, entryHeader, e.Kind) // sigue en el header
+}
+
 // TestSidebarPrefixStrip verifica que el prefijo se oculta en la visualización
 // pero el Name real permanece intacto para las acciones.
 func TestSidebarPrefixStrip(t *testing.T) {

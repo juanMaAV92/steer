@@ -189,10 +189,19 @@ func TestClickHeaderTogglesSection(t *testing.T) {
 // enter/space con el cursor en un header lo togglea.
 func TestEnterOnHeaderToggles(t *testing.T) {
 	m := newTestModel(sampleServices())
-	for range 5 { // header SERVICES→…→header IMAGES
+	// navegar hasta el header de IMAGES (semántico, no por conteo de j)
+	for i := 0; ; i++ {
+		require.Less(t, i, 20, "no se alcanzó el header IMAGES")
+		e, ok := m.sidebar.cursorEntry()
+		require.True(t, ok)
+		if e.Kind == entryHeader && e.Section == sectionImages {
+			break
+		}
 		m = mustUpdate(t, m, keyMsg("j"))
 	}
 	m = mustUpdate(t, m, keyMsg("enter"))
+	e, _ := m.sidebar.cursorEntry()
+	require.Equal(t, sectionImages, e.Section) // el toggle recoloca el cursor en SU header
 	require.Contains(t, stripANSI(m.View()), "coming soon")
 }
 

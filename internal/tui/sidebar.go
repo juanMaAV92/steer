@@ -59,6 +59,7 @@ func newSidebar() sidebar {
 
 // setServices guarda los servicios y los ordena alfabéticamente por nombre de visualización.
 func (s *sidebar) setServices(svc []core.ServiceStatus) {
+	firstLoad := len(s.services) == 0 // antes de reemplazar
 	// copiar para no mutar el slice original
 	sorted := make([]core.ServiceStatus, len(svc))
 	copy(sorted, svc)
@@ -77,7 +78,9 @@ func (s *sidebar) setServices(svc []core.ServiceStatus) {
 	if s.cursor >= len(nav) {
 		s.cursor = max(0, len(nav)-1)
 	}
-	if len(s.services) > 0 && s.cursor == 0 {
+	// salto inicial al primer servicio SOLO en la primera carga; un reload
+	// periódico no debe expulsar al usuario del header si lo dejó ahí a propósito.
+	if firstLoad && len(sorted) > 0 && s.cursor == 0 {
 		s.cursor = 1 // [0] es el header SERVICES
 	}
 }
