@@ -5,6 +5,7 @@ package core
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -83,4 +84,17 @@ type Registry interface {
 	// ListTags devuelve solo imágenes con tag desplegables (sin manifiestos
 	// colgantes, attestations ni firmas), más recientes primero, tope 50.
 	ListTags(ctx context.Context, repo string) ([]ImageTag, error)
+	// HasTag verifica si el tag existe en el repo. Consulta puntual: no depende
+	// del tope de ListTags (valida tags viejos que el picker no muestra).
+	HasTag(ctx context.Context, repo, tag string) (bool, error)
+}
+
+// IsProvisioningFailure detecta eventos de fallo de aprovisionamiento en el texto
+// que reporta el provider. Heurística documentada por provider (ECS hoy): un
+// rollout que acumula estos eventos está atascado reintentando (p. ej. un tag
+// que no existe) y ECS no lo reporta como FAILED sin circuit breaker.
+func IsProvisioningFailure(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "cannotpullcontainererror") ||
+		strings.Contains(m, "unable to place a task")
 }

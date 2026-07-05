@@ -2,11 +2,13 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
+	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
 	"github.com/juanMaAV92/steer/internal/core"
 )
 
@@ -120,4 +122,21 @@ func (r *ECRRegistry) ListTags(ctx context.Context, repo string) ([]core.ImageTa
 		out = out[:maxTags]
 	}
 	return out, nil
+}
+
+// HasTag verifica el tag con una consulta puntual; ImageNotFoundException es la
+// respuesta "no existe", no un error.
+func (r *ECRRegistry) HasTag(ctx context.Context, repo, tag string) (bool, error) {
+	_, err := r.api.DescribeImages(ctx, &ecr.DescribeImagesInput{
+		RepositoryName: awssdk.String(repo),
+		ImageIds:       []ecrtypes.ImageIdentifier{{ImageTag: awssdk.String(tag)}},
+	})
+	var notFound *ecrtypes.ImageNotFoundException
+	if errors.As(err, &notFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
