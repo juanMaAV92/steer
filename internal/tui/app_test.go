@@ -1140,3 +1140,48 @@ func TestReloadErrorKeepsRepos(t *testing.T) {
 	m2.sidebar.collapsed[sectionImages] = false
 	require.Contains(t, stripANSI(m2.View()), "registry error: boom")
 }
+
+// TestClickDetailsButtonsWithFormOpenIsNoop: con el form abierto, el click en la fila
+// de botones de Details (visible encima) no reabre otra acción.
+func TestClickDetailsButtonsWithFormOpenIsNoop(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("d"))
+	require.Equal(t, actionDeploy, m.form.kind)
+	clickX, clickY := findInView(t, m.View(), "Scale (s)")
+	m = mustUpdate(t, m, tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY})
+	require.NotNil(t, m.form)
+	require.Equal(t, actionDeploy, m.form.kind, "el click no debe cambiar la acción abierta")
+}
+
+// TestDeployNotFoundThenRetryOK: e2e del loop corregir-y-reintentar.
+func TestDeployNotFoundThenRetryOK(t *testing.T) {
+	reg := &coretest.FakeRegistry{Tags: map[string][]core.ImageTag{
+		"api": {{Tag: "v9.9", PushedAt: time.Now().Add(-time.Hour)}},
+	}}
+	m := newTestModelWithRegistry(servicesNamed("api"), reg)
+	updated, cmd := m.Update(keyMsg("d"))
+	m = updated.(Model)
+	m = mustUpdate(t, m, cmd().(formTagsMsg))
+	for _, r := range "bad" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	updated, cmd = m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	m = mustUpdate(t, m, cmd().(tagValidatedMsg)) // notFound
+	require.Contains(t, stripANSI(m.View()), "tag not found")
+	// corregir: teclear limpia el error; borrar "bad" y poner el tag bueno
+	for range 3 {
+		m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyBackspace})
+	}
+	require.Empty(t, m.form.errMsg, "editar limpia la línea de error")
+	for _, r := range "v9.9" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	updated, cmd = m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	updated, _ = m.Update(cmd().(tagValidatedMsg)) // ok
+	m = updated.(Model)
+	require.Nil(t, m.form)
+	require.True(t, m.deploy.Active)
+	require.Equal(t, []string{"api/bad", "api/v9.9"}, reg.HasTagCalls)
+}

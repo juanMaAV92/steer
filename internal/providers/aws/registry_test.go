@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -19,9 +20,28 @@ type fakeECR struct {
 	images          []ecrtypes.ImageDetail
 	imagesErr       error
 	lastImagesInput *ecr.DescribeImagesInput
+	pageSize        int // >0: pagina las respuestas con NextToken (índice como token)
 }
 
-func (f *fakeECR) DescribeRepositories(_ context.Context, _ *ecr.DescribeRepositoriesInput, _ ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error) {
+// paginate corta items en páginas de tamaño pageSize usando el índice como token.
+func paginate[T any](items []T, token *string, pageSize int) (page []T, next *string) {
+	start := 0
+	if token != nil {
+		start, _ = strconv.Atoi(*token)
+	}
+	end := min(start+pageSize, len(items))
+	page = items[start:end]
+	if end < len(items) {
+		next = awssdk.String(strconv.Itoa(end))
+	}
+	return page, next
+}
+
+func (f *fakeECR) DescribeRepositories(_ context.Context, in *ecr.DescribeRepositoriesInput, _ ...func(*ecr.Options)) (*ecr.DescribeRepositoriesOutput, error) {
+	if f.pageSize > 0 {
+		page, next := paginate(f.repos, in.NextToken, f.pageSize)
+		return &ecr.DescribeRepositoriesOutput{Repositories: page, NextToken: next}, nil
+	}
 	return &ecr.DescribeRepositoriesOutput{Repositories: f.repos}, nil
 }
 
@@ -29,6 +49,10 @@ func (f *fakeECR) DescribeImages(_ context.Context, in *ecr.DescribeImagesInput,
 	f.lastImagesInput = in
 	if f.imagesErr != nil {
 		return nil, f.imagesErr
+	}
+	if f.pageSize > 0 {
+		page, next := paginate(f.images, in.NextToken, f.pageSize)
+		return &ecr.DescribeImagesOutput{ImageDetails: page, NextToken: next}, nil
 	}
 	return &ecr.DescribeImagesOutput{ImageDetails: f.images}, nil
 }
@@ -108,4 +132,31 @@ func TestHasTagPropagatesRealErrors(t *testing.T) {
 	r := newRegistry(api, "")
 	_, err := r.HasTag(context.Background(), "repo", "v1")
 	require.ErrorContains(t, err, "throttled")
+}
+
+func TestListRepositoriesPaginates(t *testing.T) {
+	api := &fakeECR{pageSize: 2, repos: []ecrtypes.Repository{
+		{RepositoryName: awssdk.String("a")},
+		{RepositoryName: awssdk.String("b")},
+		{RepositoryName: awssdk.String("c")},
+	}}
+	repos, err := newRegistry(api, "").ListRepositories(context.Background())
+	require.NoError(t, err)
+	require.Len(t, repos, 3, "debe recorrer todas las páginas")
+}
+
+func TestListTagsPaginates(t *testing.T) {
+	now := time.Now()
+	img := func(tag string, d time.Duration) ecrtypes.ImageDetail {
+		return ecrtypes.ImageDetail{ImageTags: []string{tag},
+			ImageDigest: awssdk.String("sha256:x"), ImageSizeInBytes: awssdk.Int64(1),
+			ImagePushedAt: awssdk.Time(now.Add(-d))}
+	}
+	api := &fakeECR{pageSize: 2, images: []ecrtypes.ImageDetail{
+		img("v1", 3*time.Hour), img("v2", 2*time.Hour), img("v3", time.Hour),
+	}}
+	tags, err := newRegistry(api, "").ListTags(context.Background(), "repo")
+	require.NoError(t, err)
+	require.Len(t, tags, 3)
+	require.Equal(t, "v3", tags[0].Tag) // el orden global sobrevive a la paginación
 }

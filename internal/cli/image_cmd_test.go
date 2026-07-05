@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -66,4 +67,16 @@ func TestImageWithoutConfigShowsHint(t *testing.T) {
 	withFakeRegistry(t, nil) // fakeProvider.reg nil → ErrNoImagesConfig
 	_, err := runRoot(t, "image", "ls")
 	require.ErrorContains(t, err, "repo_template")
+}
+
+func TestImageLsAbortsOnRegistryError(t *testing.T) {
+	withFakeRegistry(t, &coretest.FakeRegistry{ReposErr: errors.New("ecr down")})
+	_, err := runRoot(t, "image", "ls")
+	require.ErrorContains(t, err, "ecr down")
+}
+
+func TestImageTagsAbortsOnRegistryError(t *testing.T) {
+	withFakeRegistry(t, &coretest.FakeRegistry{TagsErr: errors.New("ecr down")})
+	_, err := runRoot(t, "image", "tags", "-r", "api")
+	require.ErrorContains(t, err, "ecr down")
 }

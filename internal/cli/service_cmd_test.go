@@ -180,15 +180,18 @@ type stuckDeployer struct {
 
 func (d *stuckDeployer) ServiceEvents(_ context.Context, _ string) ([]core.ServiceEvent, error) {
 	d.calls++
-	if d.calls == 1 {
-		return nil, nil
-	}
-	evs := make([]core.ServiceEvent, 3)
-	for i := range evs {
-		evs[i] = core.ServiceEvent{ID: "ev-" + strconv.Itoa(i), At: time.Now(),
+	ev := func(i int) core.ServiceEvent {
+		return core.ServiceEvent{ID: "ev-" + strconv.Itoa(i), At: time.Now(),
 			Message: "CannotPullContainerError: pull image manifest has been retried", IsError: true}
 	}
-	return evs, nil
+	switch d.calls {
+	case 1:
+		return nil, nil // baseline del watch
+	case 2:
+		return []core.ServiceEvent{ev(1), ev(0)}, nil // 2 fallos: NO corta
+	default:
+		return []core.ServiceEvent{ev(2), ev(1), ev(0)}, nil // 3º: corta
+	}
 }
 
 func TestWatchRolloutDetectsStuck(t *testing.T) {
@@ -199,6 +202,7 @@ func TestWatchRolloutDetectsStuck(t *testing.T) {
 	err := watchRollout(context.Background(), &buf, dep, "nao-v2-dev-api", "api", 0)
 	require.ErrorContains(t, err, "stuck")
 	require.Contains(t, buf.String(), "steer service rollback -s api")
+	require.GreaterOrEqual(t, dep.calls, 3, "con 2 fallos el watch debe seguir; corta al 3º")
 }
 
 func TestDeployBlocksUnknownTag(t *testing.T) {
