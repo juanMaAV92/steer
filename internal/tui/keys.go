@@ -7,6 +7,7 @@ type keyMap struct {
 	Up, Down, Tab, ShiftTab, Enter, Esc          key.Binding
 	Deploy, Scale, Rollback, Refresh, Help, Quit key.Binding
 	Left, Right, Context, Space                  key.Binding
+	Filter                                       key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -27,6 +28,7 @@ func defaultKeys() keyMap {
 		Left:     key.NewBinding(key.WithKeys("left", "h")),
 		Right:    key.NewBinding(key.WithKeys("right", "l")),
 		Context:  key.NewBinding(key.WithKeys("c")),
+		Filter:   key.NewBinding(key.WithKeys("/")),
 	}
 }
 

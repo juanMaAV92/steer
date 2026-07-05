@@ -48,6 +48,8 @@ type sidebar struct {
 	selectedName  string // nombre REAL del servicio seleccionado (persiste por nombre)
 	width, height int
 	prefix        string // prefijo a ocultar en la visualización (ej. "nao-v2-dev-")
+	filterActive  bool   // true mientras se está tecleando el filtro
+	filterQuery   string // substring del filtro (aplicado sobre el nombre de display)
 }
 
 func newSidebar() sidebar {
@@ -85,6 +87,51 @@ func (s *sidebar) setServices(svc []core.ServiceStatus) {
 	}
 }
 
+// visibleServices aplica el filtro substring (case-insensitive) sobre el nombre de display.
+func (s sidebar) visibleServices() []core.ServiceStatus {
+	if s.filterQuery == "" {
+		return s.services
+	}
+	q := strings.ToLower(s.filterQuery)
+	var out []core.ServiceStatus
+	for _, svc := range s.services {
+		if strings.Contains(strings.ToLower(strings.TrimPrefix(svc.Name, s.prefix)), q) {
+			out = append(out, svc)
+		}
+	}
+	return out
+}
+
+// setFilter fija el query y reajusta selección/cursor sobre los visibles resultantes.
+func (s *sidebar) setFilter(q string) {
+	s.filterQuery = q
+	vis := s.visibleServices()
+	// si la selección quedó fuera del filtro, saltar al primer visible
+	stillVisible := false
+	for _, svc := range vis {
+		if svc.Name == s.selectedName {
+			stillVisible = true
+			break
+		}
+	}
+	if !stillVisible {
+		s.selectedName = ""
+		if len(vis) > 0 {
+			s.selectedName = vis[0].Name
+		}
+	}
+	// re-clamp del cursor sobre las nuevas entradas
+	if nav := s.navEntries(); s.cursor >= len(nav) {
+		s.cursor = max(0, len(nav)-1)
+	}
+}
+
+// clearFilter desactiva el filtro y restaura la vista completa de servicios.
+func (s *sidebar) clearFilter() {
+	s.filterActive = false
+	s.setFilter("")
+}
+
 // rows es la fuente única: cada fila renderizada con su entrada (nil = decorativa).
 func (s sidebar) rows(focused bool) []sidebarRow {
 	var out []sidebarRow
@@ -108,10 +155,21 @@ func (s sidebar) rows(focused bool) []sidebarRow {
 	appendBlank := func() { out = append(out, sidebarRow{Line: ""}) }
 
 	// SERVICES
-	appendHeader(sectionServices, "SERVICES", "("+strconv.Itoa(len(s.services))+")")
+	visible := s.visibleServices()
+	count := "(" + strconv.Itoa(len(visible)) + "/" + strconv.Itoa(len(s.services)) + ")"
+	if s.filterQuery == "" && !s.filterActive {
+		count = "(" + strconv.Itoa(len(s.services)) + ")"
+	}
+	title := "SERVICES"
+	if s.filterActive {
+		title = "SERVICES /" + s.filterQuery + "▌"
+	} else if s.filterQuery != "" {
+		title = "SERVICES /" + s.filterQuery
+	}
+	appendHeader(sectionServices, title, count)
 	appendBlank()
 	if !s.collapsed[sectionServices] {
-		for i, svc := range s.services {
+		for i, svc := range visible {
 			under := nav == s.cursor
 			line := s.serviceRow(svc, under)
 			out = append(out, sidebarRow{Line: line, Entry: &sidebarEntry{Kind: entryService, Section: sectionServices, Index: i}})
@@ -182,7 +240,7 @@ func (s *sidebar) moveCursor(delta int) {
 	}
 	s.cursor = min(max(s.cursor+delta, 0), len(nav)-1)
 	if e := nav[s.cursor]; e.Kind == entryService {
-		s.selectedName = s.services[e.Index].Name
+		s.selectedName = s.visibleServices()[e.Index].Name
 	}
 }
 
@@ -204,7 +262,7 @@ func (s *sidebar) selectEntry(target sidebarEntry) {
 		if e == target {
 			s.cursor = i
 			if e.Kind == entryService {
-				s.selectedName = s.services[e.Index].Name
+				s.selectedName = s.visibleServices()[e.Index].Name
 			}
 			return
 		}

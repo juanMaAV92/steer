@@ -492,3 +492,27 @@ func TestDeployStateReset(t *testing.T) {
 	d.Reset()
 	require.Equal(t, deployState{}, d)
 }
+
+func TestFilterModeCapturesGlobalKeys(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("/")) // activa filtro
+	m = mustUpdate(t, m, keyMsg("d")) // debe TECLEAR, no abrir deploy
+	require.Nil(t, m.overlay)
+	require.Contains(t, stripANSI(m.View()), "/d")
+	m = mustUpdate(t, m, keyMsg("esc")) // limpia y sale
+	require.NotContains(t, stripANSI(m.View()), "/d")
+}
+
+func TestFilterEnterKeepsQuery(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("/"))
+	for _, r := range "web" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	m = mustUpdate(t, m, keyMsg("enter"))
+	sel, _ := m.sidebar.selected()
+	require.Equal(t, "web", sel.Name)
+	// tras enter, las teclas globales vuelven a funcionar
+	m = mustUpdate(t, m, keyMsg("d"))
+	require.NotNil(t, m.overlay) // abrió el modal de deploy
+}

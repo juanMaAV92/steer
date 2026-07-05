@@ -232,6 +232,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.overlay != nil {
 			return m.routeOverlay(msg)
 		}
+		if m.sidebar.filterActive {
+			return m.handleFilterKey(msg)
+		}
 		return m.handleKey(msg)
 
 	case tea.MouseMsg:
@@ -336,6 +339,23 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	return nil
 }
 
+// handleFilterKey edita el filtro del sidebar en vivo (captura el teclado).
+func (m Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.sidebar.clearFilter()
+	case tea.KeyEnter:
+		m.sidebar.filterActive = false // fija el query
+	case tea.KeyBackspace:
+		if q := m.sidebar.filterQuery; q != "" {
+			m.sidebar.setFilter(q[:len(q)-1])
+		}
+	case tea.KeyRunes:
+		m.sidebar.setFilter(m.sidebar.filterQuery + string(msg.Runes))
+	}
+	return m, nil
+}
+
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.Quit):
@@ -359,6 +379,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case key.Matches(msg, m.keys.Deploy), key.Matches(msg, m.keys.Scale), key.Matches(msg, m.keys.Rollback):
 		return m.openAction(msg)
+	case key.Matches(msg, m.keys.Filter):
+		if m.focus == focusSidebar {
+			m.sidebar.filterActive = true
+		}
+		return m, nil
 	}
 
 	if m.focus == focusPanel {

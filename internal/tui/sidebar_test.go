@@ -170,3 +170,19 @@ func TestSidebarPrefixStrip(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "nao-v2-dev-audit-ms", sel.Name) // primer servicio alfabéticamente: audit-ms
 }
+
+func TestSidebarFilterLive(t *testing.T) {
+	s := newSidebar()
+	s.setServices(sampleServices())
+	s.setFilter("wo")
+	require.Len(t, s.visibleServices(), 1)
+	sel, ok := s.selected()
+	require.True(t, ok)
+	require.Equal(t, "worker", sel.Name) // la selección salta al primer visible
+	out := stripANSI(s.view(true))
+	require.Contains(t, out, "/wo")
+	require.Contains(t, out, "(1/4)")
+	require.NotContains(t, out, "api")
+	s.clearFilter()
+	require.Len(t, s.visibleServices(), 4)
+}
