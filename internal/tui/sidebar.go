@@ -47,6 +47,7 @@ type sidebar struct {
 	cursor        int    // índice sobre las entradas navegables (headers + servicios)
 	selectedName  string // nombre REAL del servicio seleccionado (persiste por nombre)
 	width, height int
+	scroll        int    // primera fila (de rows()) visible en la ventana
 	prefix        string // prefijo a ocultar en la visualización (ej. "nao-v2-dev-")
 	filterActive  bool   // true mientras se está tecleando el filtro
 	filterQuery   string // substring del filtro (aplicado sobre el nombre de display)
@@ -133,6 +134,7 @@ func (s *sidebar) setFilter(q string) {
 	if !synced && s.cursor >= len(nav) {
 		s.cursor = max(0, len(nav)-1)
 	}
+	s.ensureCursorVisible()
 }
 
 // clearFilter desactiva el filtro y restaura la vista completa de servicios.
@@ -210,9 +212,77 @@ func (s sidebar) barLine(text string) string {
 	return lipgloss.NewStyle().Background(bg).Width(w).Render(" " + text)
 }
 
+// visibleRows devuelve la ventana de s.height filas sobre rows(), con indicadores
+// ↑/↓ N more cuando hay recorte (filas decorativas, no navegables).
+func (s sidebar) visibleRows(focused bool) []sidebarRow {
+	all := s.rows(focused)
+	if s.height <= 0 || len(all) <= s.height {
+		return all
+	}
+	scroll := min(max(s.scroll, 0), len(all)-s.height)
+	win := make([]sidebarRow, s.height)
+	copy(win, all[scroll:scroll+s.height])
+	if scroll > 0 {
+		win[0] = sidebarRow{Line: render.Dim("  ↑ " + strconv.Itoa(scroll) + " more")}
+	}
+	if hidden := len(all) - (scroll + s.height); hidden > 0 {
+		win[len(win)-1] = sidebarRow{Line: render.Dim("  ↓ " + strconv.Itoa(hidden) + " more")}
+	}
+	return win
+}
+
+// scrollBy desplaza la ventana delta filas, con clamp a [0, max].
+func (s *sidebar) scrollBy(delta int) {
+	all := len(s.rows(false))
+	maxScroll := max(0, all-s.height)
+	s.scroll = min(max(s.scroll+delta, 0), maxScroll)
+}
+
+// ensureCursorVisible ajusta el scroll para que la fila del cursor quede en la ventana
+// (dejando sitio a los indicadores).
+func (s *sidebar) ensureCursorVisible() {
+	if s.height <= 0 {
+		return
+	}
+	row := s.cursorRow()
+	if row < 0 {
+		return
+	}
+	if row < s.scroll+1 { // +1: fila del indicador ↑
+		s.scroll = max(0, row-1)
+	}
+	if row > s.scroll+s.height-2 { // -2: fila del indicador ↓
+		s.scroll = row - s.height + 2
+	}
+	s.scrollBy(0) // clamp final
+}
+
+// cursorRow devuelve la fila (en rows completas) de la entrada bajo el cursor.
+func (s sidebar) cursorRow() int {
+	nav := 0
+	for i, r := range s.rows(false) {
+		if r.Entry != nil {
+			if nav == s.cursor {
+				return i
+			}
+			nav++
+		}
+	}
+	return -1
+}
+
+// EntryAtVisibleRow mapea una fila EN PANTALLA (ventana con indicadores) a su entrada.
+func (s sidebar) EntryAtVisibleRow(row int) (sidebarEntry, bool) {
+	rows := s.visibleRows(false)
+	if row < 0 || row >= len(rows) || rows[row].Entry == nil {
+		return sidebarEntry{}, false
+	}
+	return *rows[row].Entry, true
+}
+
 func (s sidebar) view(focused bool) string {
 	var b strings.Builder
-	for _, r := range s.rows(focused) {
+	for _, r := range s.visibleRows(focused) {
 		b.WriteString(r.Line + "\n")
 	}
 	return b.String()
@@ -251,6 +321,7 @@ func (s *sidebar) moveCursor(delta int) {
 	if e := nav[s.cursor]; e.Kind == entryService {
 		s.selectedName = s.visibleServices()[e.Index].Name
 	}
+	s.ensureCursorVisible()
 }
 
 // toggle colapsa/expande una sección conservando el cursor sobre su header.
@@ -260,9 +331,10 @@ func (s *sidebar) toggle(sec sidebarSection) {
 	for i, e := range s.navEntries() {
 		if e.Kind == entryHeader && e.Section == sec {
 			s.cursor = i
-			return
+			break
 		}
 	}
+	s.ensureCursorVisible()
 }
 
 // selectEntry ubica el cursor en la entrada e (click); si es servicio, lo selecciona.
@@ -273,18 +345,10 @@ func (s *sidebar) selectEntry(target sidebarEntry) {
 			if e.Kind == entryService {
 				s.selectedName = s.visibleServices()[e.Index].Name
 			}
-			return
+			break
 		}
 	}
-}
-
-// EntryAtRow mapea una fila renderizada a su entrada (ok=false si es decorativa).
-func (s sidebar) EntryAtRow(row int) (sidebarEntry, bool) {
-	rows := s.rows(false)
-	if row < 0 || row >= len(rows) || rows[row].Entry == nil {
-		return sidebarEntry{}, false
-	}
-	return *rows[row].Entry, true
+	s.ensureCursorVisible()
 }
 
 func (s sidebar) selected() (core.ServiceStatus, bool) {

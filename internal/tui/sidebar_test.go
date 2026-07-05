@@ -1,12 +1,21 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/stretchr/testify/require"
 )
+
+func manyServices(n int) []core.ServiceStatus {
+	out := make([]core.ServiceStatus, n)
+	for i := range out {
+		out[i] = core.ServiceStatus{Name: fmt.Sprintf("svc-%02d", i), Running: 1, Desired: 1}
+	}
+	return out
+}
 
 func sampleServices() []core.ServiceStatus {
 	return []core.ServiceStatus{
@@ -66,12 +75,12 @@ func TestSidebarCollapsedByDefaultHidesStubs(t *testing.T) {
 	require.Contains(t, stripANSI(s.view(true)), "coming soon")
 }
 
-func TestEntryAtRowMatchesRows(t *testing.T) {
+func TestEntryAtVisibleRowMatchesRows(t *testing.T) {
 	s := newSidebar()
 	s.setServices(sampleServices())
-	rows := s.rows(true)
+	rows := s.rows(true) // height=0 → sin ventana, misma semántica que rows()
 	for i, r := range rows {
-		e, ok := s.EntryAtRow(i)
+		e, ok := s.EntryAtVisibleRow(i)
 		if r.Entry == nil {
 			require.False(t, ok, "row %d", i)
 		} else {
@@ -79,10 +88,60 @@ func TestEntryAtRowMatchesRows(t *testing.T) {
 			require.Equal(t, *r.Entry, e)
 		}
 	}
-	_, ok := s.EntryAtRow(-1)
+	_, ok := s.EntryAtVisibleRow(-1)
 	require.False(t, ok)
-	_, ok = s.EntryAtRow(len(rows) + 5)
+	_, ok = s.EntryAtVisibleRow(len(rows) + 5)
 	require.False(t, ok)
+}
+
+func TestSidebarScrollWindowWithIndicators(t *testing.T) {
+	s := newSidebar()
+	s.height = 10
+	s.setServices(manyServices(30))
+	rows := s.visibleRows(true)
+	require.Len(t, rows, 10)
+	last := stripANSI(rows[len(rows)-1].Line)
+	require.Contains(t, last, "more") // recorte abajo
+	require.Contains(t, last, "↓")
+	// scrollear al fondo produce indicador arriba y no abajo
+	s.scrollBy(1000)
+	rows = s.visibleRows(true)
+	require.Contains(t, stripANSI(rows[0].Line), "↑")
+	require.NotContains(t, stripANSI(rows[len(rows)-1].Line), "more")
+}
+
+func TestSidebarCursorFollow(t *testing.T) {
+	s := newSidebar()
+	s.height = 8
+	s.setServices(manyServices(30))
+	for range 20 {
+		s.moveDown()
+	}
+	// el cursor (servicio 20) debe estar dentro de la ventana visible
+	found := false
+	for _, r := range s.visibleRows(true) {
+		if r.Entry != nil && r.Entry.Kind == entryService && strings.Contains(stripANSI(r.Line), "svc-20") {
+			found = true
+		}
+	}
+	require.True(t, found)
+}
+
+func TestEntryAtVisibleRowWithScroll(t *testing.T) {
+	s := newSidebar()
+	s.height = 8
+	s.setServices(manyServices(30))
+	s.scrollBy(5)
+	rows := s.visibleRows(false)
+	for i, r := range rows {
+		e, ok := s.EntryAtVisibleRow(i)
+		if r.Entry == nil {
+			require.False(t, ok, "row %d", i)
+		} else {
+			require.True(t, ok, "row %d", i)
+			require.Equal(t, *r.Entry, e)
+		}
+	}
 }
 
 func TestSidebarSelectionSurvivesReload(t *testing.T) {

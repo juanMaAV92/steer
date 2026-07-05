@@ -129,6 +129,7 @@ func (m *Model) layout() {
 			m.sidebarW, m.panelW = 10, 10
 		}
 		m.sidebar.width = m.sidebarW - 1 // PaddingLeft(1) del bloque
+		m.sidebar.height = m.bodyH / 2
 		m.events.SetSize(m.panelW-2, m.bodyH/2-2)
 		return
 	}
@@ -141,6 +142,7 @@ func (m *Model) layout() {
 		m.panelW = 10
 	}
 	m.sidebar.width = m.sidebarW - 1
+	m.sidebar.height = m.bodyH
 	m.events.SetSize(m.panelW-2, m.bodyH-2) // - pestañas - línea en blanco
 }
 
@@ -282,12 +284,17 @@ func (m Model) handleOverlayResult(res tea.Msg) (tea.Model, tea.Cmd) {
 // handleMouse enruta los eventos de mouse a la zona correcta:
 // rueda → scroll del panel de eventos, click izquierdo → selección en sidebar o pestaña en panel.
 func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
-	// rueda: scroll en el panel de eventos si el cursor está sobre el panel
+	// rueda: scroll del sidebar si el cursor está sobre él, del panel de eventos si no.
 	if msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown {
-		if msg.X > m.sidebarW {
-			return m.events.Update(msg)
+		delta := 3
+		if msg.Button == tea.MouseButtonWheelUp {
+			delta = -3
 		}
-		return nil
+		if msg.X < m.sidebarW {
+			m.sidebar.scrollBy(delta)
+			return nil
+		}
+		return m.events.Update(msg)
 	}
 	// solo procesar clicks izquierdos
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
@@ -302,7 +309,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	// click en la zona del sidebar
 	if msg.X < m.sidebarW {
 		row := msg.Y - (topBarHeight + borderTop)
-		if e, ok := m.sidebar.EntryAtRow(row); ok {
+		if e, ok := m.sidebar.EntryAtVisibleRow(row); ok {
 			switch e.Kind {
 			case entryHeader:
 				m.sidebar.toggle(e.Section)

@@ -487,6 +487,32 @@ func TestReadOnlyDetailsButtonsNoOp(t *testing.T) {
 	require.Nil(t, m.overlay)
 }
 
+func TestClickServiceWithScrolledSidebar(t *testing.T) {
+	m := newTestModel(manyServices(40))
+	// scrollear el sidebar con la rueda
+	for range 4 {
+		wheel := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown, X: 3, Y: 5}
+		m = mustUpdate(t, m, wheel)
+	}
+	out := m.View()
+	targetY, targetName := -1, ""
+	for y, line := range strings.Split(out, "\n") {
+		clean := stripANSI(line)
+		if strings.Contains(clean, "svc-2") && targetY == -1 { // primer svc-2x visible
+			fields := strings.Fields(clean)
+			// fila: "●" "svc-2X" "1/1" "—"
+			targetY, targetName = y, fields[1]
+			break
+		}
+	}
+	require.GreaterOrEqual(t, targetY, 0)
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 3, Y: targetY}
+	m = mustUpdate(t, m, click)
+	sel, ok := m.sidebar.selected()
+	require.True(t, ok)
+	require.Equal(t, targetName, sel.Name)
+}
+
 func TestDeployStateReset(t *testing.T) {
 	d := deployState{Active: true, Done: true, Service: "svc", LastID: "id"}
 	d.Reset()
