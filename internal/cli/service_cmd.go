@@ -189,7 +189,7 @@ func newServiceDeployCmd() *cobra.Command {
 				render.Dim(fmt.Sprintf("rollback with: steer --context %s service rollback -s %s", app.Ctx.Name, service)))
 
 			if watch {
-				return watchRollout(cmd.Context(), out, dep, realName, interval)
+				return watchRollout(cmd.Context(), out, dep, realName, service, interval)
 			}
 			return nil
 		},
@@ -202,9 +202,9 @@ func newServiceDeployCmd() *cobra.Command {
 	return cmd
 }
 
-// watchRollout sigue el rollout: hace streaming de los eventos del servicio (como un
-// log de deploy) e imprime la línea de status solo cuando cambia, hasta COMPLETED/FAILED.
-func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, service string, interval int) error {
+// watchRollout sigue el rollout: streaming de eventos + línea de status, hasta
+// COMPLETED/FAILED o hasta detectar un atasco (3 fallos de aprovisionamiento).
+func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, service, short string, interval int) error {
 	_, _ = fmt.Fprintln(out, render.Dim("monitoring rollout (Ctrl+C to stop)..."))
 
 	// Marca el último evento ya existente para solo mostrar los nuevos.
@@ -216,6 +216,7 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, service
 	// La línea de status se mantiene SIEMPRE como última línea: se borra, se
 	// imprimen los eventos nuevos encima (se acumulan) y se reescribe abajo.
 	statusShown := false
+	pullErrors := 0
 	for {
 		if statusShown {
 			_, _ = fmt.Fprint(out, "\r\033[K") // borra la línea de status actual
@@ -235,7 +236,17 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, service
 			}
 			for i := len(fresh) - 1; i >= 0; i-- { // del más antiguo al más nuevo
 				printEvent(out, fresh[i])
+				if core.IsProvisioningFailure(fresh[i].Message) {
+					pullErrors++
+				}
 			}
+		}
+
+		if pullErrors >= 3 {
+			_, _ = fmt.Fprintln(out)
+			_, _ = fmt.Fprintln(out, render.Danger("✗ deployment stuck: image pull failing"))
+			_, _ = fmt.Fprintln(out, render.Dim("roll back with: steer service rollback -s "+short))
+			return fmt.Errorf("deployment stuck for %q: image pull keeps failing", service)
 		}
 
 		d, err := dep.DeploymentStatus(ctx, service)

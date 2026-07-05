@@ -44,10 +44,11 @@ const (
 
 // deployState agrupa el estado del watch de deploy en vivo; Reset lo limpia entero.
 type deployState struct {
-	Active  bool
-	Done    bool
-	Service string
-	LastID  string
+	Active     bool
+	Done       bool
+	Service    string
+	LastID     string
+	PullErrors int // eventos de fallo de aprovisionamiento en el rollout actual
 }
 
 func (d *deployState) Reset() { *d = deployState{} }
@@ -349,12 +350,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.events.AppendLine(render.Dim(line))
 			}
+			if core.IsProvisioningFailure(e.Message) {
+				m.deploy.PullErrors++
+			}
 		}
 		m.deploy.LastID = msg.lastID
 		m.events.SetStatusLine("Rollout: " + render.Rollout(string(msg.rollout)) +
 			" | Running: " + strconv.Itoa(msg.running) +
 			" | Pending: " + strconv.Itoa(msg.pending) +
 			" | Desired: " + strconv.Itoa(msg.desired))
+		// 3 fallos de aprovisionamiento = rollout atascado (ECS reintenta para
+		// siempre sin circuit breaker y nunca reporta FAILED): cortar el poll.
+		if m.deploy.PullErrors >= 3 {
+			m.events.AppendLine(render.Danger("✗ deployment stuck: image pull failing — roll back with R"))
+			m.deploy.Active = false
+			m.deploy.Done = true
+			return m, m.loadServicesCmd()
+		}
 		if msg.done {
 			m.events.AppendLine(render.Success("✓ deployment completed"))
 			m.deploy.Active = false

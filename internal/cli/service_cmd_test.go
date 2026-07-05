@@ -6,7 +6,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/core"
@@ -165,8 +167,38 @@ func TestWatchRolloutStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var buf bytes.Buffer
-	err := watchRollout(ctx, &buf, fake, "svc", 1)
+	err := watchRollout(ctx, &buf, fake, "svc", "svc", 1)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+// stuckDeployer entrega eventos de fallo de pull a partir de la 2ª consulta
+// (la 1ª es el baseline del watch) y un rollout que nunca progresa.
+type stuckDeployer struct {
+	coretest.FakeDeployer
+	calls int
+}
+
+func (d *stuckDeployer) ServiceEvents(_ context.Context, _ string) ([]core.ServiceEvent, error) {
+	d.calls++
+	if d.calls == 1 {
+		return nil, nil
+	}
+	evs := make([]core.ServiceEvent, 3)
+	for i := range evs {
+		evs[i] = core.ServiceEvent{ID: "ev-" + strconv.Itoa(i), At: time.Now(),
+			Message: "CannotPullContainerError: pull image manifest has been retried", IsError: true}
+	}
+	return evs, nil
+}
+
+func TestWatchRolloutDetectsStuck(t *testing.T) {
+	dep := &stuckDeployer{FakeDeployer: coretest.FakeDeployer{
+		DeploymentValue: core.Deployment{Rollout: core.RolloutInProgress, Desired: 1},
+	}}
+	var buf bytes.Buffer
+	err := watchRollout(context.Background(), &buf, dep, "nao-v2-dev-api", "api", 0)
+	require.ErrorContains(t, err, "stuck")
+	require.Contains(t, buf.String(), "steer service rollback -s api")
 }
 
 func TestDeployBlocksUnknownTag(t *testing.T) {

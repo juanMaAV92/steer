@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -977,4 +978,54 @@ func TestStaleTagValidatedIgnored(t *testing.T) {
 	require.Nil(t, m.form)
 	require.Nil(t, c2)
 	require.False(t, m.deploy.Active)
+}
+
+// stuckEvents fabrica n eventos de fallo de aprovisionamiento con IDs únicos.
+func stuckEvents(n int) []core.ServiceEvent {
+	out := make([]core.ServiceEvent, n)
+	for i := range out {
+		out[i] = core.ServiceEvent{
+			ID:      "ev-" + strconv.Itoa(i),
+			At:      time.Now(),
+			Message: "(service x) was unable to place a task. Reason: CannotPullContainerError",
+			IsError: true,
+		}
+	}
+	return out
+}
+
+// TestWatchStuckAfterThreePullErrors: al 3er fallo el poll se detiene y avisa.
+func TestWatchStuckAfterThreePullErrors(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m.deploy = deployState{Active: true, Service: "api"}
+	poll := func(evs []core.ServiceEvent) deployPollMsg {
+		return deployPollMsg{events: evs, rollout: core.RolloutInProgress, desired: 1}
+	}
+	// 2 fallos: sigue poll-eando
+	updated, cmd := m.Update(poll(stuckEvents(2)))
+	m = updated.(Model)
+	require.True(t, m.deploy.Active)
+	require.Equal(t, 2, m.deploy.PullErrors)
+	require.NotNil(t, cmd) // deployTickCmd
+	// 3er fallo: STUCK — poll detenido, mensaje visible, R sigue vivo
+	updated, cmd = m.Update(poll(stuckEvents(1)))
+	m = updated.(Model)
+	require.False(t, m.deploy.Active)
+	require.True(t, m.deploy.Done)
+	require.NotNil(t, cmd) // loadServicesCmd (refresca la lista, como done/failed)
+	require.Contains(t, stripANSI(m.events.View()), "deployment stuck")
+	// el tick huérfano no reprograma nada
+	_, c2 := m.Update(deployPollTickMsg{})
+	require.Nil(t, c2)
+}
+
+// TestWatchEventCounterIgnoresNormalEvents: eventos sanos no suman.
+func TestWatchEventCounterIgnoresNormalEvents(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m.deploy = deployState{Active: true, Service: "api"}
+	evs := []core.ServiceEvent{{ID: "a", At: time.Now(), Message: "(service x) has started 1 tasks"}}
+	updated, _ := m.Update(deployPollMsg{events: evs, rollout: core.RolloutInProgress})
+	m = updated.(Model)
+	require.Equal(t, 0, m.deploy.PullErrors)
+	require.True(t, m.deploy.Active)
 }
