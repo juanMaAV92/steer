@@ -1019,6 +1019,22 @@ func TestWatchStuckAfterThreePullErrors(t *testing.T) {
 	require.Nil(t, c2)
 }
 
+// TestWatchCompletionBeatsStuck: si el rollout completa en el mismo poll que
+// acumula el 3er fallo, gana la completación (los fallos eran transitorios).
+func TestWatchCompletionBeatsStuck(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m.deploy = deployState{Active: true, Service: "api", PullErrors: 2}
+	msg := deployPollMsg{events: stuckEvents(1), rollout: core.RolloutCompleted,
+		running: 1, desired: 1, done: true}
+	updated, _ := m.Update(msg)
+	m = updated.(Model)
+	require.False(t, m.deploy.Active)
+	require.True(t, m.deploy.Done)
+	out := stripANSI(m.events.View())
+	require.Contains(t, out, "completed")
+	require.NotContains(t, out, "stuck")
+}
+
 // TestWatchEventCounterIgnoresNormalEvents: eventos sanos no suman.
 func TestWatchEventCounterIgnoresNormalEvents(t *testing.T) {
 	m := newTestModel(sampleServices())

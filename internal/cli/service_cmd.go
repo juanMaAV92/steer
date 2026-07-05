@@ -242,13 +242,6 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, service
 			}
 		}
 
-		if pullErrors >= 3 {
-			_, _ = fmt.Fprintln(out)
-			_, _ = fmt.Fprintln(out, render.Danger("✗ deployment stuck: image pull failing"))
-			_, _ = fmt.Fprintln(out, render.Dim("roll back with: steer service rollback -s "+short))
-			return fmt.Errorf("deployment stuck for %q: image pull keeps failing", service)
-		}
-
 		d, err := dep.DeploymentStatus(ctx, service)
 		if err != nil {
 			_, _ = fmt.Fprintln(out)
@@ -267,6 +260,15 @@ func watchRollout(ctx context.Context, out io.Writer, dep core.Deployer, service
 		if d.Rollout == core.RolloutFailed {
 			_, _ = fmt.Fprintln(out)
 			return fmt.Errorf("deployment failed for %q", service)
+		}
+		// 3 fallos de aprovisionamiento = rollout atascado (ECS reintenta para
+		// siempre sin circuit breaker y nunca reporta FAILED): cortar el poll.
+		// La completación/fallo reportado por ECS gana sobre la heurística.
+		if pullErrors >= 3 {
+			_, _ = fmt.Fprintln(out)
+			_, _ = fmt.Fprintln(out, render.Danger("✗ deployment stuck: image pull failing"))
+			_, _ = fmt.Fprintln(out, render.Dim("roll back with: steer service rollback -s "+short))
+			return fmt.Errorf("deployment stuck for %q: image pull keeps failing", service)
 		}
 		select {
 		case <-ctx.Done():

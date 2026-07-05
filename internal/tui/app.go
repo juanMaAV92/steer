@@ -359,14 +359,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			" | Running: " + strconv.Itoa(msg.running) +
 			" | Pending: " + strconv.Itoa(msg.pending) +
 			" | Desired: " + strconv.Itoa(msg.desired))
-		// 3 fallos de aprovisionamiento = rollout atascado (ECS reintenta para
-		// siempre sin circuit breaker y nunca reporta FAILED): cortar el poll.
-		if m.deploy.PullErrors >= 3 {
-			m.events.AppendLine(render.Danger("✗ deployment stuck: image pull failing — roll back with R"))
-			m.deploy.Active = false
-			m.deploy.Done = true
-			return m, m.loadServicesCmd()
-		}
 		if msg.done {
 			m.events.AppendLine(render.Success("✓ deployment completed"))
 			m.deploy.Active = false
@@ -375,6 +367,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.failed {
 			m.events.AppendLine(render.Danger("✗ deployment failed"))
+			m.deploy.Active = false
+			m.deploy.Done = true
+			return m, m.loadServicesCmd()
+		}
+		// 3 fallos de aprovisionamiento = rollout atascado (ECS reintenta para
+		// siempre sin circuit breaker y nunca reporta FAILED): cortar el poll.
+		// La completación/fallo reportado por ECS gana sobre la heurística.
+		if m.deploy.PullErrors >= 3 {
+			m.events.AppendLine(render.Danger("✗ deployment stuck: image pull failing — roll back with R"))
 			m.deploy.Active = false
 			m.deploy.Done = true
 			return m, m.loadServicesCmd()
