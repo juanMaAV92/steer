@@ -47,8 +47,9 @@ tapa el contexto (tag actual, running count) que se necesita para decidir.
 - **`actionOverlay` se elimina.** El picker (`pickerOverlay`) sigue siendo el único
   overlay. `actionConfirmedMsg` se conserva tal cual.
 - **Render**: el panel de detalles dibuja el formulario bajo la fila de botones cuando
-  está activo (caja con borde redondeado y título del kind). Si el alto no alcanza, el
-  formulario toma filas de la zona de events y las devuelve al cerrar.
+  está activo (caja con borde redondeado y título del kind). Las pestañas son excluyentes
+  (no hay zona de events debajo de Details); en alturas degeneradas el formulario se
+  recorta con el resto del panel, igual que hoy.
 - **Ruteo en `app.go`** (orden): ctrl+c → overlay (picker) → **captura del formulario**
   → captura del filtro → teclas globales. En mouse: si el formulario está abierto, solo
   se atienden clicks dentro de su geometría (vía `rows`) y la rueda; el resto no-op.
