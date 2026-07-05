@@ -186,3 +186,20 @@ func TestSidebarFilterLive(t *testing.T) {
 	s.clearFilter()
 	require.Len(t, s.visibleServices(), 4)
 }
+
+// Filtrar con el cursor lejos debe resincronizar el cursor con la nueva selección.
+func TestSetFilterResyncsCursor(t *testing.T) {
+	s := newSidebar()
+	s.setServices(sampleServices()) // api, cron, web, worker
+	for range 3 {                   // cursor a "worker"
+		s.moveDown()
+	}
+	s.setFilter("a") // solo "api" visible → selección salta a api
+	sel, _ := s.selected()
+	require.Equal(t, "api", sel.Name)
+	e, ok := s.cursorEntry()
+	require.True(t, ok)
+	require.Equal(t, entryService, e.Kind) // el cursor está SOBRE la selección
+	vis := s.visibleServices()
+	require.Equal(t, "api", vis[e.Index].Name)
+}

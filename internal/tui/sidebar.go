@@ -120,8 +120,17 @@ func (s *sidebar) setFilter(q string) {
 			s.selectedName = vis[0].Name
 		}
 	}
-	// re-clamp del cursor sobre las nuevas entradas
-	if nav := s.navEntries(); s.cursor >= len(nav) {
+	// resincronizar el cursor con la selección (evita resaltar una fila equivocada)
+	nav := s.navEntries()
+	synced := false
+	for i, e := range nav {
+		if e.Kind == entryService && vis[e.Index].Name == s.selectedName {
+			s.cursor = i
+			synced = true
+			break
+		}
+	}
+	if !synced && s.cursor >= len(nav) {
 		s.cursor = max(0, len(nav)-1)
 	}
 }
