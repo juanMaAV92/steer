@@ -278,6 +278,70 @@ func TestSelectRepoShowsTagsPanel(t *testing.T) {
 	require.Contains(t, out, "● now") // v1.0.0 coincide con el tag del servicio api
 }
 
+// TestDeployWhileRepoSelectedShowsForm: con un repo seleccionado (panel en TAGS),
+// pulsar 'd' debe volver el panel a Details y mostrar el formulario de deploy del
+// SERVICIO (las acciones son sobre servicios, no sobre repos) — no debe quedar un
+// formulario invisible capturando el teclado mientras el panel sigue en TAGS.
+func TestDeployWhileRepoSelectedShowsForm(t *testing.T) {
+	services := []core.ServiceStatus{
+		{Name: "api", Running: 2, Desired: 2, Tag: "v1.0.0"},
+	}
+	reg := &coretest.FakeRegistry{
+		Repos: []core.Repository{{Name: "api"}},
+		Tags:  map[string][]core.ImageTag{"api": {{Tag: "v2", Digest: "sha256:bbbb222222222"}}},
+	}
+	m := newTestModelWithRegistry(services, reg)
+	m = mustUpdate(t, m, reposMsg{repos: reg.Repos})
+	m.sidebar.collapsed[sectionImages] = false
+	clickX, clickY := findInView(t, m.View(), "▣ api")
+	updated, cmd := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY})
+	m = updated.(Model)
+	require.NotNil(t, cmd)
+	m = mustUpdate(t, m, cmd().(tagsMsg))
+	require.Contains(t, stripANSI(m.View()), "TAGS") // precondición: panel muestra TAGS
+
+	m = mustUpdate(t, m, keyMsg("d"))
+	require.NotNil(t, m.form, "d debe abrir el formulario de deploy")
+
+	out := stripANSI(m.View())
+	require.Contains(t, out, "image tag:", "el formulario debe ser visible, no invisible")
+	require.NotContains(t, out, "TAGS", "el panel debe volver a Details, no seguir en TAGS")
+	require.Equal(t, "api", m.form.service)
+}
+
+// TestClickTagRowDoesNotOpenAction: con el panel mostrando TAGS, un click en la fila
+// que ocupa la geometría del botón de acción de Details (detailsButtonRowY) no debe
+// abrir ningún formulario — esa fila pertenece a una fila de tags, no a un botón.
+func TestClickTagRowDoesNotOpenAction(t *testing.T) {
+	services := []core.ServiceStatus{
+		{Name: "api", Running: 2, Desired: 2, Tag: "v1.0.0"},
+	}
+	reg := &coretest.FakeRegistry{
+		Repos: []core.Repository{{Name: "api"}},
+		Tags:  map[string][]core.ImageTag{"api": {{Tag: "v2", Digest: "sha256:bbbb222222222"}}},
+	}
+	m := newTestModelWithRegistry(services, reg)
+	m = mustUpdate(t, m, reposMsg{repos: reg.Repos})
+	m.sidebar.collapsed[sectionImages] = false
+	clickX, clickY := findInView(t, m.View(), "▣ api")
+	updated, cmd := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY})
+	m = updated.(Model)
+	require.NotNil(t, cmd)
+	m = mustUpdate(t, m, cmd().(tagsMsg))
+	require.Contains(t, stripANSI(m.View()), "TAGS")
+
+	detailsButtonRowY := topBarHeight + borderTop + 1 + 1 + panel.DetailsButtonLine
+	var clickPanelX int
+	if x, y := findInView(t, m.View(), "v2"); y == detailsButtonRowY {
+		clickPanelX = x
+	} else {
+		clickPanelX = m.sidebarW + 3 // dentro de la zona del panel, en dos columnas
+	}
+	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickPanelX, Y: detailsButtonRowY}
+	m = mustUpdate(t, m, click)
+	require.Nil(t, m.form, "un click en una fila de tags no debe abrir un formulario de acción")
+}
+
 func TestMouseWheelScrollsPanelWhenFocused(t *testing.T) {
 	m := newTestModel(sampleServices())
 	m.focus = focusPanel

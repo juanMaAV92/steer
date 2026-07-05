@@ -476,7 +476,11 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	// dentro del sidebar y provocaría un misfire que abre el modal de acción erróneamente.
 	// fila de botones de Details en pantalla, derivada del layout real del panel
 	detailsButtonRowY := topBarHeight + borderTop + 1 /*pestañas*/ + 1 /*línea en blanco*/ + panel.DetailsButtonLine
-	if !m.singleColumn && m.current.Writable && m.tabs.Active == panel.TabDetails && msg.Y == detailsButtonRowY {
+	// si hay un repo seleccionado el panel muestra TAGS aunque tabs.Active siga en
+	// TabDetails (ver panelBody): esa fila puede caer sobre una fila de tag, no un
+	// botón de acción, así que hay que excluir explícitamente ese estado.
+	if !m.singleColumn && m.current.Writable && m.tabs.Active == panel.TabDetails &&
+		m.sidebar.lastSelected != sectionImages && msg.Y == detailsButtonRowY {
 		localX := msg.X - (m.sidebarW + 2)
 		if idx := render.ButtonAtColumn(panel.DetailsActionLabels, localX); idx >= 0 {
 			return m.openActionKind(actionKindFor(idx))
@@ -640,6 +644,10 @@ func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.form = newActionForm(actionRollback, s.Name)
 	}
 	m.tabs.Active = panel.TabDetails // el formulario vive en Details
+	// las acciones son sobre servicios: si había un repo seleccionado (panel en TAGS)
+	// hay que volver a Services para que panelBody() renderice Details y el formulario
+	// sea visible (si no, queda un formulario invisible que igual captura el teclado).
+	m.sidebar.lastSelected = sectionServices
 	m.focus = focusPanel
 	m.notice = ""
 	if key.Matches(msg, m.keys.Deploy) {
@@ -722,6 +730,9 @@ func (m *Model) openActionKind(kind actionKind) tea.Cmd {
 	}
 	m.form = newActionForm(kind, s.Name)
 	m.tabs.Active = panel.TabDetails
+	// las acciones son sobre servicios: forzar el panel de vuelta a Services
+	// para que el formulario sea visible (ver comentario en openAction).
+	m.sidebar.lastSelected = sectionServices
 	m.focus = focusPanel
 	m.notice = ""
 	if kind == actionDeploy {
