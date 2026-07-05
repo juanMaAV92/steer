@@ -18,6 +18,9 @@ type Provider struct {
 
 	once     sync.Once
 	deployer core.Deployer
+
+	regOnce  sync.Once
+	registry core.Registry
 }
 
 // NewProvider carga la sesión AWS del contexto (cancelable vía ctx).
@@ -36,4 +39,14 @@ func NewProvider(ctx context.Context, c config.Context) (*Provider, error) {
 func (p *Provider) Deployer() (core.Deployer, error) {
 	p.once.Do(func() { p.deployer = NewDeployer(p.cfg, p.cfgCtx.Cluster) })
 	return p.deployer, nil
+}
+
+// Registry devuelve el Registry ECR del contexto (memoizado).
+// Sin bloque [images] en el contexto, la capacidad está deshabilitada.
+func (p *Provider) Registry() (core.Registry, error) {
+	if p.cfgCtx.Images == nil {
+		return nil, core.ErrNoImagesConfig
+	}
+	p.regOnce.Do(func() { p.registry = NewRegistry(p.cfg, p.cfgCtx.RepoPrefix()) })
+	return p.registry, nil
 }

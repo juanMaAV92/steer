@@ -25,9 +25,30 @@ func fakeFactory(dep core.Deployer) providers.ProviderFactory {
 	}
 }
 
-type fakeProvider struct{ dep core.Deployer }
+// fakeFactoryWithRegistry adapta un core.Deployer y un core.Registry fake a
+// una ProviderFactory (para tests de la capacidad de imágenes).
+//
+//nolint:unused // lo consumen los tests de la capacidad IMAGES (hitos siguientes)
+func fakeFactoryWithRegistry(dep core.Deployer, reg core.Registry) providers.ProviderFactory {
+	return func(context.Context, config.Context) (providers.Provider, error) {
+		return fakeProvider{dep: dep, reg: reg}, nil
+	}
+}
+
+// fakeProvider adapta fakes de core al Provider bundle.
+type fakeProvider struct {
+	dep core.Deployer
+	reg core.Registry // nil → capacidad deshabilitada
+}
 
 func (p fakeProvider) Deployer() (core.Deployer, error) { return p.dep, nil }
+
+func (p fakeProvider) Registry() (core.Registry, error) {
+	if p.reg == nil {
+		return nil, core.ErrNoImagesConfig
+	}
+	return p.reg, nil
+}
 
 // stripANSI elimina secuencias de escape ANSI de una cadena.
 func stripANSI(s string) string {

@@ -20,6 +20,9 @@ type fakeProvider struct{ dep core.Deployer }
 
 func (p fakeProvider) Deployer() (core.Deployer, error) { return p.dep, nil }
 
+// Registry no está cableado en esta demo: sin bloque [images].
+func (p fakeProvider) Registry() (core.Registry, error) { return nil, core.ErrNoImagesConfig }
+
 func main() {
 	now := time.Now()
 	fake := &coretest.FakeDeployer{

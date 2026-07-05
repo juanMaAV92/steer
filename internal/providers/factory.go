@@ -21,7 +21,9 @@ func IsImplemented(cloud string) bool { return cloud == "aws" }
 // Provider agrupa las capacidades de un contexto; cachea la sesión del cloud.
 type Provider interface {
 	Deployer() (core.Deployer, error)
-	// Registry() (core.Registry, error)  ← se añade en el hito registry
+	// Registry devuelve la capacidad de imágenes; core.ErrNoImagesConfig si el
+	// contexto no tiene bloque [images].
+	Registry() (core.Registry, error)
 }
 
 // ProviderFactory construye el bundle de un contexto. ctx permite cancelar la

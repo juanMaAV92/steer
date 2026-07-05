@@ -14,10 +14,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeProvider adapta un core.Deployer fake al Provider bundle.
-type fakeProvider struct{ dep core.Deployer }
+// fakeProvider adapta fakes de core al Provider bundle.
+type fakeProvider struct {
+	dep core.Deployer
+	reg core.Registry // nil → capacidad deshabilitada
+}
 
 func (p fakeProvider) Deployer() (core.Deployer, error) { return p.dep, nil }
+
+func (p fakeProvider) Registry() (core.Registry, error) {
+	if p.reg == nil {
+		return nil, core.ErrNoImagesConfig
+	}
+	return p.reg, nil
+}
 
 func withFakeDeployer(t *testing.T, fake core.Deployer) {
 	t.Helper()
