@@ -289,7 +289,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// el reload exitoso limpia el aviso del fallo transitorio
 			if strings.HasPrefix(m.notice, "images refresh failed") {
-				m.notice = "" // el reload exitoso limpia el aviso del fallo transitorio
+				m.notice = ""
 			}
 		}
 		return m, nil
@@ -314,8 +314,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tagValidatedMsg:
 		// guard de obsolescencia: el form debe seguir abierto validando ESTE tag
+		// (input != tag es defensivo: hoy inalcanzable porque el teclado queda
+		// congelado durante la validación; protege a futuros productores externos)
 		if m.form == nil || m.form.kind != actionDeploy || !m.form.validating ||
-			m.form.service != msg.service || m.form.input != msg.tag { // (input != tag es defensivo: hoy inalcanzable porque el teclado queda congelado durante la validación; protege a futuros productores externos)
+			m.form.service != msg.service || m.form.input != msg.tag {
 			return m, nil
 		}
 		switch msg.verdict {

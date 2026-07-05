@@ -747,9 +747,14 @@ func TestRepoVanishOnReloadResetsTags(t *testing.T) {
 	// un tagsMsg tardío del repo desaparecido no revive nada
 	m = mustUpdate(t, m, tagsMsg{repo: "api", tags: reg.Tags["api"]})
 	require.Nil(t, m.tags)
-	// notice limpio tras reload exitoso (si estaba seteado por fallo anterior)
+	// cargar repos de nuevo para poder testear fallo con repos cargados
 	m = mustUpdate(t, m, reposMsg{repos: reg.Repos})
-	require.Empty(t, m.notice) // limpio tras reload exitoso
+	// un reload fallido con repos cargados deja el aviso...
+	m = mustUpdate(t, m, reposMsg{err: errors.New("throttled")})
+	require.Contains(t, m.notice, "images refresh failed")
+	// ...y el reload exitoso siguiente lo limpia
+	m = mustUpdate(t, m, reposMsg{repos: reg.Repos})
+	require.Empty(t, m.notice)
 }
 
 // findInView localiza needle en el render y devuelve la coordenada de click
