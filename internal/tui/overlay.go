@@ -56,8 +56,9 @@ func (o *pickerOverlay) Update(msg tea.Msg) (bool, tea.Msg) {
 		return false, nil
 	case tea.MouseMsg:
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
-			// la línea 0 del overlay es el título del picker (el Model resta el top bar)
-			if idx, ok := o.picker.indexAtLine(msg.Y - topBarHeight); ok {
+			// la línea 0 del overlay es el título del picker; el overlay se dibuja
+			// tras la regla, así que restamos top bar + regla.
+			if idx, ok := o.picker.indexAtLine(msg.Y - (topBarHeight + borderTop)); ok {
 				o.picker.selectIndex(idx)
 				if sel, ok := o.picker.selected(); ok {
 					return true, contextChosenMsg{ctx: sel}

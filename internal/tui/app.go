@@ -27,10 +27,10 @@ const (
 
 // Constantes de geometría para el routing de mouse.
 // topBarHeight: la barra superior ocupa 1 línea.
-// borderTop: fila del borde superior del sidebar/panel (1 fila del borde lipgloss redondeado).
+// borderTop: fila de la regla horizontal que separa la barra superior del cuerpo.
 const (
 	topBarHeight = 1 // la barra superior ocupa 1 línea
-	borderTop    = 1 // borde superior del sidebar/panel
+	borderTop    = 1 // fila de la regla horizontal
 )
 
 type actionKind int
@@ -114,34 +114,34 @@ func (m Model) loadServicesCmd() tea.Cmd {
 	}
 }
 
-// layout reparte el espacio disponible entre sidebar y panel.
+// layout reparte el espacio: [top bar][regla][cuerpo bodyH][regla][help].
 // Si el ancho < singleColumnThreshold, colapsa a una sola columna apilada.
 func (m *Model) layout() {
 	m.singleColumn = m.width < singleColumnThreshold
-	m.bodyH = m.height - 4 // top bar (3) + bottom (1)
+	m.bodyH = m.height - 4 // top bar + regla + regla + help
 	if m.bodyH < 3 {
 		m.bodyH = 3
 	}
 	if m.singleColumn {
-		m.sidebarW = m.width - 4
-		m.panelW = m.width - 4
+		m.sidebarW = m.width
+		m.panelW = m.width
 		if m.sidebarW < 10 {
 			m.sidebarW, m.panelW = 10, 10
 		}
-		m.sidebar.width = m.sidebarW
-		m.events.SetSize(m.panelW-2, m.bodyH/2-3)
+		m.sidebar.width = m.sidebarW - 1 // PaddingLeft(1) del bloque
+		m.events.SetSize(m.panelW-2, m.bodyH/2-2)
 		return
 	}
 	m.sidebarW = m.width * 30 / 100
 	if m.sidebarW < sidebarMinWidth {
 		m.sidebarW = sidebarMinWidth
 	}
-	m.panelW = m.width - m.sidebarW - 4 // bordes
+	m.panelW = m.width - m.sidebarW - 1 // columna del divisor
 	if m.panelW < 10 {
 		m.panelW = 10
 	}
-	m.sidebar.width = m.sidebarW
-	m.events.SetSize(m.panelW-2, m.bodyH-3) // -tabs -bordes
+	m.sidebar.width = m.sidebarW - 1
+	m.events.SetSize(m.panelW-2, m.bodyH-2) // - pestañas - línea en blanco
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -297,7 +297,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	// click en la zona del sidebar
-	if msg.X <= m.sidebarW {
+	if msg.X < m.sidebarW {
 		row := msg.Y - (topBarHeight + borderTop)
 		if hit, ok := m.sidebar.HitAtRow(row); ok && hit.Section == sectionServices {
 			m.sidebar.selectIndex(hit.Index)
@@ -311,7 +311,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	// fila de botones de Details en pantalla, derivada del layout real del panel
 	detailsButtonRowY := topBarHeight + borderTop + 1 /*pestañas*/ + 1 /*línea en blanco*/ + panel.DetailsButtonLine
 	if !m.singleColumn && m.current.Writable && m.tabs.Active == panel.TabDetails && msg.Y == detailsButtonRowY {
-		localX := msg.X - (m.sidebarW + 3)
+		localX := msg.X - (m.sidebarW + 2)
 		if idx := render.ButtonAtColumn(panel.DetailsActionLabels, localX); idx >= 0 {
 			m.openActionKind(actionKindFor(idx))
 			return nil
@@ -320,9 +320,9 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	// click en la zona del panel: primera fila útil = pestañas
 	panelRow := msg.Y - (topBarHeight + borderTop)
 	if panelRow == 0 {
-		// el contenido del panel empieza tras el borde del sidebar + el borde del panel:
-		// sidebar = [borde][contenido sidebarW][borde], luego [borde panel][contenido].
-		panelContentX0 := m.sidebarW + 3
+		// el contenido del panel empieza tras el sidebar y la columna del divisor:
+		// sidebar = [contenido sidebarW], luego [divisor 1col][contenido panel].
+		panelContentX0 := m.sidebarW + 2
 		if idx := m.tabs.TabAtColumn(msg.X - panelContentX0); idx >= 0 {
 			m.tabs.Set(panel.Tab(idx))
 		}
@@ -410,7 +410,7 @@ func (m Model) applyContextSwitch(sel config.Context) (tea.Model, tea.Cmd) {
 	m.current = sel
 	m.sidebar = newSidebar()
 	m.sidebar.prefix = sel.Prefix()
-	m.sidebar.width = m.sidebarW
+	m.sidebar.width = m.sidebarW - 1
 	m.loading = true
 	m.notice = ""
 	m.status = ""
@@ -494,34 +494,29 @@ func (m Model) View() string {
 		return render.Danger("error: "+m.err.Error()) + "\n" + render.Dim("press q to quit")
 	}
 	top := topBar(m.width, m.current.Cloud, m.current.Name, m.current.Cluster, m.current.Writable)
+	rule := hrule(m.width)
 
 	if m.overlay != nil {
-		return top + "\n" + m.overlay.View(m.width, m.bodyH) + "\n" +
-			bottomBar(m.keys.shortHelp(), m.notice, m.status)
+		return top + "\n" + rule + "\n" + m.overlay.View(m.width, m.bodyH) + "\n" +
+			rule + "\n" + bottomBar(m.keys.shortHelp(), m.notice, m.status)
 	}
 
-	sideStyle := blurredBorder()
-	panelStyle := blurredBorder()
-	switch m.focus {
-	case focusSidebar:
-		sideStyle = focusedBorder()
-	case focusPanel:
-		panelStyle = focusedBorder()
+	block := func(w int) lipgloss.Style {
+		return lipgloss.NewStyle().Width(w).Height(m.bodyH).PaddingLeft(1)
 	}
 	panelBody := m.tabs.View() + "\n\n" + m.panelBody()
 	var body string
 	if m.singleColumn {
-		// apilado: sidebar arriba, panel abajo (cada uno la mitad del alto)
-		side := sideStyle.Width(m.sidebarW).Height(m.bodyH / 2).Render(m.sidebar.view(m.focus == focusSidebar))
-		pan := panelStyle.Width(m.panelW).Height(m.bodyH / 2).Render(panelBody)
-		body = lipgloss.JoinVertical(lipgloss.Left, side, pan)
+		side := block(m.sidebarW).Height(m.bodyH / 2).Render(m.sidebar.view(m.focus == focusSidebar))
+		pan := block(m.panelW).Height(m.bodyH - m.bodyH/2 - 1).Render(panelBody)
+		body = lipgloss.JoinVertical(lipgloss.Left, side, rule, pan)
 	} else {
-		side := sideStyle.Width(m.sidebarW).Height(m.bodyH).Render(m.sidebar.view(m.focus == focusSidebar))
-		pan := panelStyle.Width(m.panelW).Height(m.bodyH).Render(panelBody)
-		body = lipgloss.JoinHorizontal(lipgloss.Top, side, pan)
+		side := block(m.sidebarW).Render(m.sidebar.view(m.focus == focusSidebar))
+		pan := block(m.panelW).Render(panelBody)
+		body = lipgloss.JoinHorizontal(lipgloss.Top, side, vdivider(m.bodyH), pan)
 	}
 	bottom := bottomBar(m.keys.shortHelp(), m.notice, m.status)
-	return top + "\n" + body + "\n" + bottom
+	return top + "\n" + rule + "\n" + body + "\n" + rule + "\n" + bottom
 }
 
 func (m Model) panelBody() string {
