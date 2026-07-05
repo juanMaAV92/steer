@@ -157,6 +157,26 @@ func (m Model) loadTagsCmd(repo string) tea.Cmd {
 	}
 }
 
+// loadFormTagsCmd pide los tags del repo hermano del servicio para el picker.
+// Cualquier error (sin config, cloud caído) degrada en silencio a input libre.
+func (m Model) loadFormTagsCmd(service string) tea.Cmd {
+	provider := m.provider
+	ctx := m.runCtx
+	short := strings.TrimPrefix(service, m.current.Prefix())
+	repo := m.current.RepoName(short)
+	return func() tea.Msg {
+		reg, err := provider.Registry()
+		if err != nil {
+			return formTagsMsg{service: service}
+		}
+		tags, err := reg.ListTags(ctx, repo)
+		if err != nil {
+			return formTagsMsg{service: service}
+		}
+		return formTagsMsg{service: service, tags: tags}
+	}
+}
+
 // syncRepoTags dispara la carga de tags si la selección de repo cambió.
 // Llamar tras cualquier mutación del sidebar (teclas y clicks).
 func (m *Model) syncRepoTags() tea.Cmd {
@@ -242,6 +262,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.tags = msg.tags
+		return m, nil
+
+	case formTagsMsg:
+		if m.form != nil && m.form.kind == actionDeploy && m.form.service == msg.service {
+			m.form.setTags(msg.tags)
+		}
 		return m, nil
 
 	case tickMsg:
@@ -386,6 +412,10 @@ func (m Model) handleFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if result != nil {
 			return m.handleOverlayResult(result)
 		}
+	case msg.Type == tea.KeyDown:
+		m.form.movePick(1)
+	case msg.Type == tea.KeyUp:
+		m.form.movePick(-1)
 	case key.Matches(msg, m.keys.Tab), key.Matches(msg, m.keys.Right):
 		m.form.moveFocus(1)
 	case key.Matches(msg, m.keys.ShiftTab), key.Matches(msg, m.keys.Left):
@@ -449,8 +479,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	if !m.singleColumn && m.current.Writable && m.tabs.Active == panel.TabDetails && msg.Y == detailsButtonRowY {
 		localX := msg.X - (m.sidebarW + 2)
 		if idx := render.ButtonAtColumn(panel.DetailsActionLabels, localX); idx >= 0 {
-			m.openActionKind(actionKindFor(idx))
-			return nil
+			return m.openActionKind(actionKindFor(idx))
 		}
 	}
 	// click en la zona del panel: primera fila útil = pestañas
@@ -613,6 +642,9 @@ func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.tabs.Active = panel.TabDetails // el formulario vive en Details
 	m.focus = focusPanel
 	m.notice = ""
+	if key.Matches(msg, m.keys.Deploy) {
+		return m, m.loadFormTagsCmd(s.Name)
+	}
 	return m, nil
 }
 
@@ -663,6 +695,11 @@ func (m *Model) clickForm(msg tea.MouseMsg) tea.Cmd {
 	formY0 := topBarHeight + borderTop + 2 + panel.DetailsButtonLine + 1
 	row := msg.Y - formY0
 	x := msg.X - (m.sidebarW + 2) // contenido del panel: divisor + PaddingLeft
+	if idx := m.form.tagAt(row); idx >= 0 {
+		m.form.pick = idx
+		m.form.input = m.form.visibleTags()[idx].Tag
+		return nil
+	}
 	idx := m.form.buttonAt(row, x)
 	if idx < 0 {
 		return nil
@@ -678,15 +715,19 @@ func (m *Model) clickForm(msg tea.MouseMsg) tea.Cmd {
 }
 
 // openActionKind abre el formulario para una acción (click en botones de Details).
-func (m *Model) openActionKind(kind actionKind) {
+func (m *Model) openActionKind(kind actionKind) tea.Cmd {
 	s, ok := m.sidebar.selected()
 	if !ok {
-		return
+		return nil
 	}
 	m.form = newActionForm(kind, s.Name)
 	m.tabs.Active = panel.TabDetails
 	m.focus = focusPanel
 	m.notice = ""
+	if kind == actionDeploy {
+		return m.loadFormTagsCmd(s.Name)
+	}
+	return nil
 }
 
 func (m Model) View() string {

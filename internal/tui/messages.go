@@ -47,4 +47,10 @@ type deployPollMsg struct {
 
 type deployPollTickMsg struct{}
 
+// formTagsMsg trae los tags cargados para el picker del formulario de deploy.
+type formTagsMsg struct {
+	service string
+	tags    []core.ImageTag
+}
+
 const refreshInterval = 15 * time.Second

@@ -4,8 +4,10 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/stretchr/testify/require"
 )
 
@@ -66,11 +68,59 @@ func TestFormViewAndButtonGeometry(t *testing.T) {
 	require.Contains(t, out, "Roll back?")
 	require.Contains(t, out, "Confirm (↵)")
 	require.Contains(t, out, "Cancel (esc)")
-	// formButtonRow declara la fila real de los botones dentro del view
+	// buttonRow() declara la fila real de los botones dentro del view
 	lines := strings.Split(out, "\n")
-	require.Contains(t, stripANSI(lines[formButtonRow]), "Confirm")
+	require.Contains(t, stripANSI(lines[f.buttonRow()]), "Confirm")
 	// hit-testing: la primera columna del contenido cae en el botón 0
-	require.Equal(t, 0, f.buttonAt(formButtonRow, formContentX0))
-	require.Equal(t, -1, f.buttonAt(formButtonRow-1, formContentX0)) // otra fila
-	require.Equal(t, -1, f.buttonAt(formButtonRow, 0))               // borde de la caja
+	require.Equal(t, 0, f.buttonAt(f.buttonRow(), formContentX0))
+	require.Equal(t, -1, f.buttonAt(f.buttonRow()-1, formContentX0)) // otra fila
+	require.Equal(t, -1, f.buttonAt(f.buttonRow(), 0))               // borde de la caja
+}
+
+func pickerTags() []core.ImageTag {
+	now := time.Now()
+	return []core.ImageTag{
+		{Tag: "v1.4.2", PushedAt: now.Add(-2 * time.Hour)},
+		{Tag: "v1.4.1", PushedAt: now.Add(-72 * time.Hour)},
+		{Tag: "v1.3.9", PushedAt: now.Add(-200 * time.Hour)},
+	}
+}
+
+func TestFormTagsFilterByInput(t *testing.T) {
+	f := newActionForm(actionDeploy, "api")
+	f.setTags(pickerTags())
+	require.Len(t, f.visibleTags(), 3)
+	f.typeKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v1.4")})
+	require.Len(t, f.visibleTags(), 2)
+	f.typeKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("zzz")})
+	require.Empty(t, f.visibleTags())
+}
+
+func TestFormMovePickFillsInput(t *testing.T) {
+	f := newActionForm(actionDeploy, "api")
+	f.setTags(pickerTags())
+	f.movePick(1)
+	require.Equal(t, "v1.4.2", f.input) // primer tag (más reciente)
+	f.movePick(1)
+	require.Equal(t, "v1.4.1", f.input)
+	f.movePick(-1)
+	require.Equal(t, "v1.4.2", f.input)
+	// teclear resetea el pick y vuelve a filtrar sobre lo tecleado
+	f.typeKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	require.Equal(t, -1, f.pick)
+}
+
+func TestFormGeometryShiftsWithTags(t *testing.T) {
+	f := newActionForm(actionDeploy, "api")
+	require.Equal(t, 3, f.buttonRow()) // sin tags: geometría de siempre
+	f.setTags(pickerTags())
+	require.Equal(t, 3+3, f.buttonRow()) // 3 filas de tags entre prompt y botones
+	require.Equal(t, 0, f.tagAt(3))      // primera fila de tag
+	require.Equal(t, 2, f.tagAt(5))
+	require.Equal(t, -1, f.tagAt(6)) // fila de botones, no tag
+	require.Equal(t, 0, f.buttonAt(f.buttonRow(), formContentX0))
+	// rollback/scale no muestran picker
+	s := newActionForm(actionScale, "api")
+	s.setTags(pickerTags())
+	require.Equal(t, 3, s.buttonRow())
 }

@@ -2,15 +2,18 @@
 package tui
 
 import (
+	"strings"
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/juanMaAV92/steer/internal/core"
 	"github.com/juanMaAV92/steer/internal/render"
 )
 
 // Geometría del formulario inline, fuente única para render y hit-testing:
-// borde(0), título(1), prompt(2), botones(3), borde(4).
+// borde(0), título(1), prompt(2), tags(3..3+n-1), botones(3+n), borde.
 const (
-	formButtonRow = 3 // fila 0-based de los botones dentro del view del formulario
 	formContentX0 = 2 // columnas a la izquierda del contenido: borde(1) + padding(1)
 )
 
@@ -28,11 +31,15 @@ type actionForm struct {
 	kind    actionKind
 	service string
 	input   string
-	focus   int // 0 = confirmar, 1 = cancelar
+	focus   int             // 0 = confirmar, 1 = cancelar
+	tags    []core.ImageTag // tags del repo hermano (solo kind deploy); nil = sin picker
+	pick    int             // índice en visibleTags() rellenado por ↑↓; -1 = tecleando
+	query   string          // lo tecleado por el usuario; distinto de input mientras hay pick,
+	// para que ↑↓ siga filtrando sobre lo escrito y no sobre el tag ya elegido
 }
 
 func newActionForm(kind actionKind, service string) *actionForm {
-	return &actionForm{kind: kind, service: service}
+	return &actionForm{kind: kind, service: service, pick: -1}
 }
 
 func (f *actionForm) typeKey(msg tea.KeyMsg) {
@@ -44,9 +51,60 @@ func (f *actionForm) typeKey(msg tea.KeyMsg) {
 		if n := len(f.input); n > 0 {
 			f.input = f.input[:n-1]
 		}
+		f.pick = -1
+		f.query = f.input
 	case tea.KeyRunes:
 		f.input += string(msg.Runes)
+		f.pick = -1
+		f.query = f.input
 	}
+}
+
+// setTags habilita el picker (solo tiene efecto visual en deploy).
+func (f *actionForm) setTags(tags []core.ImageTag) { f.tags = tags }
+
+// visibleTags filtra los tags por lo tecleado (substring, máx 5 visibles). Usa
+// query en vez de input para que, tras un ↑↓, no se autofiltre por el tag ya
+// elegido y siga permitiendo ciclar entre todas las coincidencias del texto escrito.
+func (f actionForm) visibleTags() []core.ImageTag {
+	if f.kind != actionDeploy || len(f.tags) == 0 {
+		return nil
+	}
+	q := strings.ToLower(f.query)
+	var out []core.ImageTag
+	for _, t := range f.tags {
+		if q == "" || strings.Contains(strings.ToLower(t.Tag), q) {
+			out = append(out, t)
+		}
+		if len(out) == 5 {
+			break
+		}
+	}
+	return out
+}
+
+// movePick mueve la selección del picker y rellena el input con el tag elegido.
+func (f *actionForm) movePick(delta int) {
+	vis := f.visibleTags()
+	if len(vis) == 0 {
+		return
+	}
+	// el primer ↓ entra en la lista; después se desplaza con clamp
+	f.pick = min(max(f.pick+delta, 0), len(vis)-1)
+	f.input = vis[f.pick].Tag
+}
+
+// buttonRow es la fila de los botones dentro del view: la geometría base
+// (borde, título, prompt) más las filas visibles del picker.
+func (f actionForm) buttonRow() int { return 3 + len(f.visibleTags()) }
+
+// tagAt devuelve el índice del tag en la fila row del view, o -1.
+func (f actionForm) tagAt(row int) int {
+	n := len(f.visibleTags())
+	if n == 0 || row < 3 || row >= 3+n {
+		return -1
+	}
+	return row - 3
 }
 
 // moveFocus mueve el foco entre confirmar(0) y cancelar(1), con wrap.
@@ -91,13 +149,14 @@ func (f *actionForm) activateIndex(idx int) (bool, tea.Msg) {
 // buttonAt devuelve el índice del botón bajo la coordenada (row, x) local al
 // view del formulario, o -1 si no cae en ninguno.
 func (f actionForm) buttonAt(row, x int) int {
-	if row != formButtonRow {
+	if row != f.buttonRow() {
 		return -1
 	}
 	return render.ButtonAtColumn(f.labels(), x-formContentX0)
 }
 
-// view renderiza la caja del formulario: título, prompt y botones con foco.
+// view renderiza la caja del formulario: título, prompt, picker de tags (si
+// aplica) y botones con foco.
 func (f actionForm) view() string {
 	var title, prompt string
 	switch f.kind {
@@ -111,8 +170,21 @@ func (f actionForm) view() string {
 		title = "Roll back?"
 		prompt = render.Dim("This reverts to the previous revision.")
 	}
-	inner := render.Bold(title) + "\n" + prompt + "\n" +
-		render.ButtonsWithFocus(f.labels(), f.focus)
+	rows := []string{render.Bold(title), prompt}
+	if vis := f.visibleTags(); len(vis) > 0 {
+		now := time.Now()
+		for i, t := range vis {
+			line := "  " + t.Tag + "  " + render.Age(t.PushedAt, now)
+			if i == f.pick {
+				line = lipgloss.NewStyle().Background(lipgloss.Color(render.SelectionBarColor)).Render(line)
+			} else {
+				line = render.Dim(line)
+			}
+			rows = append(rows, line)
+		}
+	}
+	rows = append(rows, render.ButtonsWithFocus(f.labels(), f.focus))
+	inner := strings.Join(rows, "\n")
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(render.BrandColor)).

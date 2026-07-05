@@ -79,6 +79,16 @@ func newTestModelWithRegistry(services []core.ServiceStatus, reg core.Registry) 
 	return m
 }
 
+// servicesNamed crea servicios mínimos con los nombres dados (para que el repo
+// hermano coincida con el template "{name}" de newTestModelWithRegistry).
+func servicesNamed(names ...string) []core.ServiceStatus {
+	out := make([]core.ServiceStatus, len(names))
+	for i, n := range names {
+		out[i] = core.ServiceStatus{Name: n, Running: 1, Desired: 1}
+	}
+	return out
+}
+
 func applySize(m Model, w, h int) (Model, tea.Cmd) {
 	updated, cmd := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	return updated.(Model), cmd
@@ -742,4 +752,58 @@ func TestSidebarShowsReposFromRegistry(t *testing.T) {
 	require.Contains(t, out, "api")
 	require.Contains(t, out, "worker")
 	require.NotContains(t, out, "coming soon")
+}
+
+// TestDeployFormShowsAndPicksTags: abrir deploy carga tags; ↓ rellena el input; enter despliega el elegido.
+func TestDeployFormShowsAndPicksTags(t *testing.T) {
+	reg := &coretest.FakeRegistry{Tags: map[string][]core.ImageTag{
+		"api": {{Tag: "v9.9", PushedAt: time.Now().Add(-time.Hour)}},
+	}}
+	m := newTestModelWithRegistry(servicesNamed("api"), reg)
+	updated, cmd := m.Update(keyMsg("d"))
+	m = updated.(Model)
+	require.NotNil(t, cmd, "abrir deploy debe disparar la carga de tags")
+	m = mustUpdate(t, m, cmd().(formTagsMsg))
+	require.Contains(t, stripANSI(m.View()), "v9.9")
+	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, "v9.9", m.form.input)
+	updated, cmd = m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.Nil(t, m.form)
+	require.NotNil(t, cmd) // startDeployCmd con el tag elegido
+}
+
+// TestDeployFormDegradesWithoutRegistry: sin [images], el formulario es el de siempre.
+func TestDeployFormDegradesWithoutRegistry(t *testing.T) {
+	m := newTestModel(sampleServices()) // sin registry
+	updated, cmd := m.Update(keyMsg("d"))
+	m = updated.(Model)
+	require.NotNil(t, m.form)
+	if cmd != nil {
+		m = mustUpdate(t, m, cmd().(formTagsMsg)) // llega vacío
+	}
+	require.Equal(t, 3, m.form.buttonRow()) // geometría sin picker
+	// el flujo teclear+enter sigue intacto
+	for _, r := range "v2" {
+		m = mustUpdate(t, m, keyMsg(string(r)))
+	}
+	updated, cmd = m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.Nil(t, m.form)
+	require.NotNil(t, cmd)
+}
+
+// TestClickFormTagRowFillsInput: click en una fila del picker rellena el input (anclado al render).
+func TestClickFormTagRowFillsInput(t *testing.T) {
+	reg := &coretest.FakeRegistry{Tags: map[string][]core.ImageTag{
+		"api": {{Tag: "v9.9", PushedAt: time.Now().Add(-time.Hour)}},
+	}}
+	m := newTestModelWithRegistry(servicesNamed("api"), reg)
+	updated, cmd := m.Update(keyMsg("d"))
+	m = updated.(Model)
+	m = mustUpdate(t, m, cmd().(formTagsMsg))
+	clickX, clickY := findInView(t, m.View(), "v9.9")
+	m = mustUpdate(t, m, tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY})
+	require.NotNil(t, m.form, "el click en un tag no cierra el formulario")
+	require.Equal(t, "v9.9", m.form.input)
 }
