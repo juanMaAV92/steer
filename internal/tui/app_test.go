@@ -369,7 +369,7 @@ func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 
 	// abrir deploy del 1er servicio (api) y teclear tag
 	m = mustUpdate(t, m, keyMsg("d"))
-	require.IsType(t, &actionOverlay{}, m.overlay)
+	require.NotNil(t, m.form)
 	for _, r := range "v2" {
 		m = mustUpdate(t, m, keyMsg(string(r)))
 	}
@@ -411,18 +411,8 @@ func TestClickDetailsDeployButton(t *testing.T) {
 	require.GreaterOrEqual(t, clickX, 0, "no se encontró el botón Deploy en el render")
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY}
 	m = mustUpdate(t, m, click)
-	require.IsType(t, &actionOverlay{}, m.overlay)
-	require.Equal(t, actionDeploy, m.overlay.(*actionOverlay).act.kind)
-}
-
-// TestClickCancelsActionModal verifica que con el modal abierto, cualquier click lo cancela.
-func TestClickCancelsActionModal(t *testing.T) {
-	m := newTestModel(sampleServices())
-	m = mustUpdate(t, m, keyMsg("d")) // abre deploy
-	require.IsType(t, &actionOverlay{}, m.overlay)
-	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 1, Y: 1}
-	m = mustUpdate(t, m, click)
-	require.Nil(t, m.overlay) // cerrado
+	require.NotNil(t, m.form)
+	require.Equal(t, actionDeploy, m.form.kind)
 }
 
 // TestSingleColumnDetailsClickNoMisfire verifica que en modo de una columna, un click en el borde
@@ -437,7 +427,7 @@ func TestSingleColumnDetailsClickNoMisfire(t *testing.T) {
 	// en modo dos columnas, pero NO debe abrir el modal en modo una columna.
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 78, Y: 11}
 	m = mustUpdate(t, m, click)
-	require.Nil(t, m.overlay)
+	require.Nil(t, m.form)
 }
 
 // TestClickDetailsScaleAndRollbackButtons verifica que un click en los botones Scale y Rollback
@@ -467,8 +457,8 @@ func TestClickDetailsScaleAndRollbackButtons(t *testing.T) {
 			require.GreaterOrEqual(t, clickX, 0, "no se encontró "+tc.label)
 			click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY}
 			m = mustUpdate(t, m, click)
-			require.IsType(t, &actionOverlay{}, m.overlay)
-			require.Equal(t, tc.kind, m.overlay.(*actionOverlay).act.kind)
+			require.NotNil(t, m.form)
+			require.Equal(t, tc.kind, m.form.kind)
 		})
 	}
 }
@@ -485,6 +475,7 @@ func TestReadOnlyDetailsButtonsNoOp(t *testing.T) {
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: m.sidebarW + 5, Y: 11}
 	m = mustUpdate(t, m, click)
 	require.Nil(t, m.overlay)
+	require.Nil(t, m.form)
 }
 
 func TestClickServiceWithScrolledSidebar(t *testing.T) {
@@ -511,6 +502,54 @@ func TestClickServiceWithScrolledSidebar(t *testing.T) {
 	sel, ok := m.sidebar.selected()
 	require.True(t, ok)
 	require.Equal(t, targetName, sel.Name)
+}
+
+// TestFormOpensInDetailsTabAndCapturesKeys: 'd' abre el formulario inline en la
+// pestaña Details y el teclado queda capturado (las teclas globales no disparan).
+func TestFormOpensInDetailsTabAndCapturesKeys(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m.tabs.Active = panel.TabEvents // desde otra pestaña
+	m = mustUpdate(t, m, keyMsg("d"))
+	require.NotNil(t, m.form)
+	require.Equal(t, actionDeploy, m.form.kind)
+	require.Equal(t, panel.TabDetails, m.tabs.Active)
+	// "q" no cierra la app: se teclea en el input
+	updated, cmd := m.Update(keyMsg("q"))
+	m = updated.(Model)
+	require.Nil(t, cmd)
+	require.Equal(t, "q", m.form.input)
+}
+
+// TestFormTabMovesFocusEnterActivates: tab enfoca Cancel; enter sobre Cancel cierra sin acción.
+func TestFormTabMovesFocusEnterActivates(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("d"))
+	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyTab})
+	require.NotNil(t, m.form)
+	require.Equal(t, 1, m.form.focus)
+	updated, cmd := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.Nil(t, m.form)
+	require.Nil(t, cmd)
+}
+
+// TestFormEscCloses: esc cierra el formulario sin emitir acción.
+func TestFormEscCloses(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("s"))
+	require.NotNil(t, m.form)
+	m = mustUpdate(t, m, keyMsg("esc"))
+	require.Nil(t, m.form)
+}
+
+// TestFormRendersInsideDetailsPanel: el formulario se dibuja bajo los botones de Details.
+func TestFormRendersInsideDetailsPanel(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m = mustUpdate(t, m, keyMsg("d"))
+	out := stripANSI(m.View())
+	require.Contains(t, out, "image tag:")
+	require.Contains(t, out, "Cancel (esc)")
+	require.Contains(t, out, "Deploy (d)") // los botones de Details siguen visibles
 }
 
 func TestDeployStateReset(t *testing.T) {
@@ -540,5 +579,5 @@ func TestFilterEnterKeepsQuery(t *testing.T) {
 	require.Equal(t, "web", sel.Name)
 	// tras enter, las teclas globales vuelven a funcionar
 	m = mustUpdate(t, m, keyMsg("d"))
-	require.NotNil(t, m.overlay) // abrió el modal de deploy
+	require.NotNil(t, m.form) // abrió el formulario de deploy
 }

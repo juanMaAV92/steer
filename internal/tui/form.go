@@ -14,6 +14,13 @@ const (
 	formContentX0 = 2 // columnas a la izquierda del contenido: borde(1) + padding(1)
 )
 
+// actionConfirmedMsg: el usuario confirmó una acción en el formulario inline.
+type actionConfirmedMsg struct {
+	kind    actionKind
+	service string
+	input   string
+}
+
 // actionForm es el formulario inline de deploy/scale/rollback que se dibuja
 // dentro del panel Details, bajo la fila de botones de acción. Reemplaza al
 // modal centrado: no es overlay, el click fuera no lo cierra.

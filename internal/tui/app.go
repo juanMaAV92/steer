@@ -66,6 +66,7 @@ type Model struct {
 	tabs    panel.Tabs
 	events  panel.Events
 	overlay overlay
+	form    *actionForm
 
 	focus   focus
 	loading bool
@@ -234,6 +235,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.overlay != nil {
 			return m.routeOverlay(msg)
 		}
+		if m.form != nil {
+			return m.handleFormKey(msg)
+		}
 		if m.sidebar.filterActive {
 			return m.handleFilterKey(msg)
 		}
@@ -261,22 +265,53 @@ func (m Model) routeOverlay(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleOverlayResult ejecuta la elección hecha en un overlay.
-// NOTA: m.overlay ya fue puesto a nil por routeOverlay antes de llegar aquí.
+// handleOverlayResult ejecuta la elección hecha en un overlay o en el formulario
+// inline. NOTA: el overlay/form ya fue cerrado por el caller antes de llegar aquí.
 func (m Model) handleOverlayResult(res tea.Msg) (tea.Model, tea.Cmd) {
 	switch r := res.(type) {
 	case contextChosenMsg:
 		return m.applyContextSwitch(r.ctx)
 	case actionConfirmedMsg:
-		if r.kind == actionDeploy {
-			// flujo de deploy en vivo (idéntico al actual del handler de Enter)
-			m.focus = focusPanel
-			m.tabs.Active = panel.TabEvents
-			m.events.Reset()
-			m.deploy = deployState{Active: true, Service: r.service}
-			return m, startDeployCmd(m.runCtx, m.dep, r.service, r.input)
+		cmd := m.applyActionConfirmed(r)
+		return m, cmd
+	}
+	return m, nil
+}
+
+// applyActionConfirmed ejecuta una acción confirmada (desde teclado o click).
+// El deploy va por el flujo en vivo (Events + poll); scale/rollback por runActionCmd.
+func (m *Model) applyActionConfirmed(r actionConfirmedMsg) tea.Cmd {
+	if r.kind == actionDeploy {
+		m.focus = focusPanel
+		m.tabs.Active = panel.TabEvents
+		m.events.Reset()
+		m.deploy = deployState{Active: true, Service: r.service}
+		return startDeployCmd(m.runCtx, m.dep, r.service, r.input)
+	}
+	return m.runActionCmd(r.kind, r.service, r.input)
+}
+
+// handleFormKey captura el teclado mientras el formulario de acción está abierto:
+// esc cancela, enter activa el botón enfocado, tab/←/→ mueven el foco y el resto
+// se teclea en el input. Las teclas globales NO disparan (modo captura).
+func (m Model) handleFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Esc):
+		m.form = nil
+	case key.Matches(msg, m.keys.Enter):
+		done, result := m.form.activate()
+		if done {
+			m.form = nil
 		}
-		return m, m.runActionCmd(r.kind, r.service, r.input)
+		if result != nil {
+			return m.handleOverlayResult(result)
+		}
+	case key.Matches(msg, m.keys.Tab), key.Matches(msg, m.keys.Right):
+		m.form.moveFocus(1)
+	case key.Matches(msg, m.keys.ShiftTab), key.Matches(msg, m.keys.Left):
+		m.form.moveFocus(-1)
+	default:
+		m.form.typeKey(msg)
 	}
 	return m, nil
 }
@@ -475,12 +510,14 @@ func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch {
 	case key.Matches(msg, m.keys.Deploy):
-		m.overlay = newActionOverlay(m.keys, actionDeploy, s.Name)
+		m.form = newActionForm(actionDeploy, s.Name)
 	case key.Matches(msg, m.keys.Scale):
-		m.overlay = newActionOverlay(m.keys, actionScale, s.Name)
+		m.form = newActionForm(actionScale, s.Name)
 	case key.Matches(msg, m.keys.Rollback):
-		m.overlay = newActionOverlay(m.keys, actionRollback, s.Name)
+		m.form = newActionForm(actionRollback, s.Name)
 	}
+	m.tabs.Active = panel.TabDetails // el formulario vive en Details
+	m.focus = focusPanel
 	m.notice = ""
 	return m, nil
 }
@@ -520,13 +557,15 @@ func actionKindFor(idx int) actionKind {
 	}
 }
 
-// openActionKind abre el modal para una acción (usado por el click en botones de Details).
+// openActionKind abre el formulario para una acción (click en botones de Details).
 func (m *Model) openActionKind(kind actionKind) {
 	s, ok := m.sidebar.selected()
 	if !ok {
 		return
 	}
-	m.overlay = newActionOverlay(m.keys, kind, s.Name)
+	m.form = newActionForm(kind, s.Name)
+	m.tabs.Active = panel.TabDetails
+	m.focus = focusPanel
 	m.notice = ""
 }
 
@@ -572,6 +611,10 @@ func (m Model) panelBody() string {
 		return panel.LogsView()
 	default:
 		displayName := strings.TrimPrefix(s.Name, m.current.Prefix())
-		return panel.DetailsView(s, m.current.Writable, displayName)
+		body := panel.DetailsView(s, m.current.Writable, displayName)
+		if m.form != nil {
+			body += "\n" + m.form.view()
+		}
+		return body
 	}
 }
