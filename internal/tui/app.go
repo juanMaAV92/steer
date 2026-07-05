@@ -282,6 +282,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		default:
 			m.sidebar.setRepos(msg.repos)
+			// si el repo seleccionado desapareció, limpiar el estado de tags para
+			// que una respuesta tardía suya no pase el guard de tagsMsg
+			if _, ok := m.sidebar.selectedRepo(); !ok && m.tagsRepo != "" {
+				m.tagsRepo, m.tags, m.tagsErr, m.tagsLoading = "", nil, "", false
+			}
+			// el reload exitoso limpia el aviso del fallo transitorio
+			if strings.HasPrefix(m.notice, "images refresh failed") {
+				m.notice = "" // el reload exitoso limpia el aviso del fallo transitorio
+			}
 		}
 		return m, nil
 
@@ -306,7 +315,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tagValidatedMsg:
 		// guard de obsolescencia: el form debe seguir abierto validando ESTE tag
 		if m.form == nil || m.form.kind != actionDeploy || !m.form.validating ||
-			m.form.service != msg.service || m.form.input != msg.tag {
+			m.form.service != msg.service || m.form.input != msg.tag { // (input != tag es defensivo: hoy inalcanzable porque el teclado queda congelado durante la validación; protege a futuros productores externos)
 			return m, nil
 		}
 		switch msg.verdict {
@@ -556,7 +565,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	}
 	// click en la fila de botones de acción del panel Details
 	// La geometría de botones solo es válida en modo dos columnas; en una columna cae
-	// dentro del sidebar y provocaría un misfire que abre el modal de acción erróneamente.
+	// dentro del sidebar y provocaría un misfire que abre el formulario de acción erróneamente.
 	// fila de botones de Details en pantalla, derivada del layout real del panel
 	detailsButtonRowY := topBarHeight + borderTop + 1 /*pestañas*/ + 1 /*línea en blanco*/ + panel.DetailsButtonLine
 	// si hay un repo seleccionado el panel muestra TAGS aunque tabs.Active siga en
@@ -892,8 +901,7 @@ func (m Model) panelBody() string {
 		case m.tagsErr != "":
 			return render.Danger("registry error: " + m.tagsErr)
 		default:
-			short := strings.TrimPrefix(repo, m.current.RepoPrefix())
-			return panel.TagsView(short, m.tags, m.deployedTagFor(repo), time.Now())
+			return panel.TagsView(m.shortRepo(repo), m.tags, m.deployedTagFor(repo), time.Now())
 		}
 	}
 	s, ok := m.sidebar.selected()
@@ -915,10 +923,15 @@ func (m Model) panelBody() string {
 	}
 }
 
+// shortRepo devuelve el nombre de display del repo (sin el prefijo del contexto).
+func (m Model) shortRepo(repo string) string {
+	return strings.TrimPrefix(repo, m.current.RepoPrefix())
+}
+
 // deployedTagFor devuelve el tag que corre en el servicio hermano del repo
 // (mismo {name} corto en ambos templates); vacío si no hay hermano.
 func (m Model) deployedTagFor(repo string) string {
-	short := strings.TrimPrefix(repo, m.current.RepoPrefix())
+	short := m.shortRepo(repo)
 	for _, s := range m.sidebar.services {
 		if strings.TrimPrefix(s.Name, m.current.Prefix()) == short {
 			return s.Tag

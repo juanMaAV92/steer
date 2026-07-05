@@ -537,7 +537,7 @@ func TestDeployFlowFeedsEventsPanel(t *testing.T) {
 	require.Contains(t, m.events.View(), "completed")
 }
 
-// TestClickDetailsDeployButton verifica que un click en [ Deploy (d) ] abre el modal de deploy.
+// TestClickDetailsDeployButton verifica que un click en [ Deploy (d) ] abre el formulario de deploy.
 // Anclado al render: la Y y X se derivan del texto real de View().
 func TestClickDetailsDeployButton(t *testing.T) {
 	m := newTestModel(sampleServices()) // foco sidebar, tab Details, writable
@@ -567,14 +567,14 @@ func TestSingleColumnDetailsClickNoMisfire(t *testing.T) {
 	m, _ = applySize(m, 79, 30) // ancho < singleColumnThreshold (80) → una columna
 	require.True(t, m.singleColumn)
 	// X=78 está en el panel (> sidebarW=75) y localX=0 coincide con el primer botón
-	// en modo dos columnas, pero NO debe abrir el modal en modo una columna.
+	// en modo dos columnas, pero NO debe abrir el formulario en modo una columna.
 	click := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 78, Y: 11}
 	m = mustUpdate(t, m, click)
 	require.Nil(t, m.form)
 }
 
 // TestClickDetailsScaleAndRollbackButtons verifica que un click en los botones Scale y Rollback
-// del panel Details abre el modal con el actionKind correcto.
+// del panel Details abre el formulario con el actionKind correcto.
 // Anclado al render: la X e Y se derivan del texto real de View().
 func TestClickDetailsScaleAndRollbackButtons(t *testing.T) {
 	for _, tc := range []struct {
@@ -723,6 +723,33 @@ func TestFilterEnterKeepsQuery(t *testing.T) {
 	// tras enter, las teclas globales vuelven a funcionar
 	m = mustUpdate(t, m, keyMsg("d"))
 	require.NotNil(t, m.form) // abrió el formulario de deploy
+}
+
+// TestRepoVanishOnReloadResetsTags: si el repo seleccionado desaparece en un reload,
+// el estado de tags se limpia y un tagsMsg tardío del repo desaparecido se ignora.
+func TestRepoVanishOnReloadResetsTags(t *testing.T) {
+	reg := &coretest.FakeRegistry{
+		Repos: []core.Repository{{Name: "api"}},
+		Tags:  map[string][]core.ImageTag{"api": {{Tag: "v1", PushedAt: time.Now()}}},
+	}
+	m := newTestModelWithRegistry(servicesNamed("api"), reg)
+	m = mustUpdate(t, m, reposMsg{repos: reg.Repos})
+	m.sidebar.collapsed[sectionImages] = false
+	clickX, clickY := findInView(t, m.View(), "▣ api")
+	updated, cmd := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY})
+	m = updated.(Model)
+	m = mustUpdate(t, m, cmd().(tagsMsg))
+	require.Equal(t, "api", m.tagsRepo)
+	// reload exitoso SIN el repo → estado de tags limpio
+	m = mustUpdate(t, m, reposMsg{repos: nil})
+	require.Empty(t, m.tagsRepo)
+	require.Nil(t, m.tags)
+	// un tagsMsg tardío del repo desaparecido no revive nada
+	m = mustUpdate(t, m, tagsMsg{repo: "api", tags: reg.Tags["api"]})
+	require.Nil(t, m.tags)
+	// notice limpio tras reload exitoso (si estaba seteado por fallo anterior)
+	m = mustUpdate(t, m, reposMsg{repos: reg.Repos})
+	require.Empty(t, m.notice) // limpio tras reload exitoso
 }
 
 // findInView localiza needle en el render y devuelve la coordenada de click

@@ -282,10 +282,8 @@ func (s sidebar) rows(focused bool) []sidebarRow {
 				nav++
 			}
 		}
-		appendBlank()
-	} else {
-		appendBlank()
 	}
+	appendBlank()
 	// DATABASES
 	appendHeader(sectionDatabases, "DATABASES", "···")
 	if !s.collapsed[sectionDatabases] {
