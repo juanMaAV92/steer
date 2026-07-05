@@ -493,7 +493,7 @@ func (m Model) View() string {
 	if m.err != nil {
 		return render.Danger("error: "+m.err.Error()) + "\n" + render.Dim("press q to quit")
 	}
-	top := topBar(m.current.Cloud, m.current.Name, m.current.Cluster, m.current.Writable)
+	top := topBar(m.width, m.current.Cloud, m.current.Name, m.current.Cluster, m.current.Writable)
 
 	if m.overlay != nil {
 		return top + "\n" + m.overlay.View(m.width, m.bodyH) + "\n" +
