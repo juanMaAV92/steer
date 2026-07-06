@@ -23,9 +23,13 @@ una versión debe ser **un comando** (`git tag vX.Y.Z && git push origin vX.Y.Z`
    Linux instala vía binario directo o `go install` (documentado). Sin bloque `test`
    en el cask (limitación del formato). Se descartó pinnear GoReleaser viejo (deuda
    sobre un pipe muerto).
-6. **Sin firma/notarización de macOS en v1:** brew no la necesita; para descargas
-   directas por navegador se documenta `xattr -d com.apple.quarantine`. El certificado
-   de Apple queda para cuando haya usuarios externos.
+6. **Sin firma/notarización de macOS en v1:** el certificado de Apple queda para
+   cuando haya usuarios externos. CORRECCIÓN post-release (v0.1.1): a diferencia de
+   las fórmulas, los casks SÍ aplican `com.apple.quarantine` a sus artefactos —
+   Gatekeeper bloqueó el binario del v0.1.0 al primer uso. El cask lleva desde
+   v0.1.1 el hook `postflight` estándar de GoReleaser que quita el quarantine en
+   la instalación. Para descargas directas por navegador se documenta
+   `xattr -d com.apple.quarantine`.
 
 ## Piezas
 

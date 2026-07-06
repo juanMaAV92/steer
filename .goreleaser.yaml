@@ -73,3 +73,13 @@ homebrew_casks:
     homepage: https://github.com/juanMaAV92/steer
     description: "The simplicity of a PaaS, on your own AWS — deploy, scale and watch services from CLI/TUI"
     license: MIT
+    # El binario no está firmado/notarizado: los casks SÍ marcan sus artefactos
+    # con com.apple.quarantine (a diferencia de las fórmulas), así que sin este
+    # hook Gatekeeper bloquea el binario al primer uso ("Apple could not verify...").
+    # Hook estándar de GoReleaser para CLIs sin firmar.
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/steer"]
+          end
