@@ -1,13 +1,75 @@
+# Configuración de release: binarios multiplataforma + Homebrew tap.
+# Verificar cambios con: goreleaser check && goreleaser release --snapshot --clean
 version: 2
+
+project_name: steer
+
+before:
+  hooks:
+    - go mod tidy
+
 builds:
-  - main: ./cmd/steer
+  - id: steer
+    main: ./cmd/steer
     binary: steer
-    env: [CGO_ENABLED=0]
-    goos: [linux, darwin]
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
     goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
     ldflags:
       - -s -w -X main.version={{.Version}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
 archives:
-  - formats: [tar.gz]
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
 checksum:
-  name_template: 'checksums.txt'
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  groups:
+    - title: Features
+      regexp: "^feat"
+      order: 0
+    - title: Bug fixes
+      regexp: "^fix"
+      order: 1
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - "^docs"
+      - "^test"
+      - "^refactor"
+      - "^chore"
+      - "^ci"
+
+# NOTA de compatibilidad: goreleaser >= 2.16 deprecó "brews" en favor de
+# "homebrew_casks" (el propio proyecto indica que reemplazar uno por otro basta).
+# Se usa homebrew_casks para que "goreleaser check" pase; el "brew install" del
+# usuario final no cambia.
+homebrew_casks:
+  - name: steer
+    repository:
+      owner: juanMaAV92
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/juanMaAV92/steer
+    description: "The simplicity of a PaaS, on your own AWS — deploy, scale and watch services from CLI/TUI"
+    license: MIT

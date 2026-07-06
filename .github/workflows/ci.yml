@@ -17,3 +17,8 @@ jobs:
       - run: go vet ./...
       - run: go test ./... -race
       - run: go build ./...
+      - name: goreleaser check
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: check
