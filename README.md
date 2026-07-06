@@ -35,6 +35,27 @@ binary** with two faces over one shared core:
   `steer --context stg service deploy -s my-svc -t v1.2.3 -y`.
   First-class for the lead and for pipelines.
 
+## Install
+
+```bash
+# macOS (Homebrew)
+brew install juanMaAV92/tap/steer
+
+# Any platform with Go installed (including Linux)
+go install github.com/juanMaAV92/steer/cmd/steer@latest
+```
+
+**Linux without Go:** download the `steer_*_linux_{amd64,arm64}.tar.gz` from the
+[latest release](https://github.com/juanMaAV92/steer/releases/latest) and place `steer` in your `PATH`.
+
+**Windows:** download `steer_*_windows_amd64.zip` from the
+[latest release](https://github.com/juanMaAV92/steer/releases/latest), unzip and add
+`steer.exe` to your `PATH`. Use **Windows Terminal** — the TUI (mouse included) degrades
+in the legacy `cmd.exe` console.
+
+**macOS direct download note:** binaries from the releases page (not brew) are not
+notarized; clear the quarantine flag once: `xattr -d com.apple.quarantine ./steer`.
+
 ## Who is it for?
 
 Steer is built around **two roles**:
@@ -103,8 +124,9 @@ AWS service, so the same command keeps working when other clouds are added.
 2. ✅ **`service`** — deploy / scale / rollback / resize / status with preview and watch
 3. ✅ TUI dashboard — mouse-driven, multi-context, live rollouts
 4. ✅ **`image`** (ECR) — repos & tags in TUI and CLI, deploy tag-picker, registry-validated deploys, stuck-rollout detection
-5. ⏳ Distribution (Homebrew) & onboarding wizard — next up
-6. `service logs/events`, `db`, `promote`, `⌘k` palette, minor capabilities
+5. ✅ Distribution — Homebrew tap (macOS), 5-platform releases
+6. ⏳ Onboarding wizard — next up
+7. `service logs/events`, `db`, `promote`, `⌘k` palette, minor capabilities
 
 See [`docs/superpowers/plans/2026-06-15-roadmap.md`](docs/superpowers/plans/2026-06-15-roadmap.md).
 
