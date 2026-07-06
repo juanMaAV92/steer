@@ -17,14 +17,27 @@ type ServiceEvent struct {
 	IsError bool
 }
 
+// Resources son los recursos de cómputo de un servicio, en unidades agnósticas.
+type Resources struct {
+	CPUMilli  int // mili-vCPU: 1000 = 1 vCPU
+	MemoryMiB int
+}
+
+// ResourceOption es un tier de CPU con sus memorias válidas, ordenadas ascendente.
+type ResourceOption struct {
+	CPUMilli  int
+	MemoryMiB []int
+}
+
 // ServiceStatus es el estado de un servicio/contenedor.
 type ServiceStatus struct {
-	Name    string
-	Running int
-	Desired int
-	Pending int
-	Status  string // estado del servicio (p.ej. ACTIVE)
-	Tag     string // tag de imagen en uso (vacío si no se pudo resolver)
+	Name      string
+	Running   int
+	Desired   int
+	Pending   int
+	Status    string    // estado del servicio (p.ej. ACTIVE)
+	Tag       string    // tag de imagen en uso (vacío si no se pudo resolver)
+	Resources Resources // recursos de la task; cero = desconocido (p. ej. EC2)
 }
 
 // RolloutState es el estado del despliegue activo, normalizado entre providers.
@@ -57,6 +70,12 @@ type Deployer interface {
 	DeploymentStatus(ctx context.Context, service string) (Deployment, error)
 	// ServiceEvents devuelve los eventos del servicio, más recientes primero.
 	ServiceEvents(ctx context.Context, service string) ([]ServiceEvent, error)
+	// Resize registra una nueva revisión con los recursos y actualiza el servicio
+	// (rollout). El Rollback existente revierte también los recursos.
+	Resize(ctx context.Context, service string, res Resources, log StepLogger) error
+	// ResourceOptions devuelve la tabla de combos válidos del provider, por CPU
+	// ascendente. Estática: no consulta el cloud.
+	ResourceOptions() []ResourceOption
 }
 
 // ErrNoImagesConfig indica que el contexto no tiene bloque [images]; la

@@ -3,6 +3,7 @@ package coretest
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/juanMaAV92/steer/internal/core"
@@ -15,6 +16,9 @@ type FakeDeployer struct {
 	DeployErr       error
 	DeploymentValue core.Deployment     // devuelto por DeploymentStatus
 	Events          []core.ServiceEvent // devuelto por ServiceEvents
+	ResourcesValue  core.Resources      // devuelto en ServiceStatus.Resources vía Services
+	ResizeErr       error
+	ResizeCalls     []string // "service/cpuMilli/memMiB"
 
 	DeployCalls   []string // "service/tag"
 	ScaleCalls    []string // "service/count"
@@ -53,4 +57,21 @@ func (f *FakeDeployer) DeploymentStatus(_ context.Context, _ string) (core.Deplo
 
 func (f *FakeDeployer) ServiceEvents(_ context.Context, _ string) ([]core.ServiceEvent, error) {
 	return f.Events, nil
+}
+
+func (f *FakeDeployer) Resize(_ context.Context, service string, res core.Resources, log core.StepLogger) error {
+	if log != nil {
+		log("resizing")
+	}
+	f.ResizeCalls = append(f.ResizeCalls,
+		fmt.Sprintf("%s/%d/%d", service, res.CPUMilli, res.MemoryMiB))
+	return f.ResizeErr
+}
+
+// ResourceOptions: tabla pequeña y fija para tests (2 tiers).
+func (f *FakeDeployer) ResourceOptions() []core.ResourceOption {
+	return []core.ResourceOption{
+		{CPUMilli: 250, MemoryMiB: []int{512, 1024, 2048}},
+		{CPUMilli: 500, MemoryMiB: []int{1024, 2048, 3072, 4096}},
+	}
 }

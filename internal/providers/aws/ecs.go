@@ -303,3 +303,29 @@ func (d *ECSDeployer) Deploy(ctx context.Context, service, tag string, log core.
 	})
 	return err
 }
+
+// fargateOptions: tiers clásicos de Fargate (los de 8/16 vCPU quedan fuera de v1).
+var fargateOptions = []core.ResourceOption{
+	{CPUMilli: 250, MemoryMiB: []int{512, 1024, 2048}},
+	{CPUMilli: 500, MemoryMiB: memRange(1024, 4096)},
+	{CPUMilli: 1000, MemoryMiB: memRange(2048, 8192)},
+	{CPUMilli: 2000, MemoryMiB: memRange(4096, 16384)},
+	{CPUMilli: 4000, MemoryMiB: memRange(8192, 30720)},
+}
+
+// memRange genera memorias válidas de from a to en pasos de 1 GiB.
+func memRange(from, to int) []int {
+	var out []int
+	for m := from; m <= to; m += 1024 {
+		out = append(out, m)
+	}
+	return out
+}
+
+// ResourceOptions devuelve la tabla Fargate.
+func (d *ECSDeployer) ResourceOptions() []core.ResourceOption { return fargateOptions }
+
+// Resize se completa en la siguiente task del plan.
+func (d *ECSDeployer) Resize(context.Context, string, core.Resources, core.StepLogger) error {
+	return fmt.Errorf("resize: not implemented yet")
+}

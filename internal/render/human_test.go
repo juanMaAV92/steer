@@ -29,3 +29,17 @@ func TestShortDigest(t *testing.T) {
 	require.Equal(t, "abcdef123456", ShortDigest("sha256:abcdef123456789..."))
 	require.Equal(t, "corto", ShortDigest("corto"))
 }
+
+func TestCPULabel(t *testing.T) {
+	require.Equal(t, "0.25 vCPU", CPULabel(250))
+	require.Equal(t, "0.5 vCPU", CPULabel(500))
+	require.Equal(t, "1 vCPU", CPULabel(1000))
+	require.Equal(t, "4 vCPU", CPULabel(4000))
+}
+
+func TestMemLabel(t *testing.T) {
+	require.Equal(t, "512 MB", MemLabel(512))
+	require.Equal(t, "1 GB", MemLabel(1024))
+	require.Equal(t, "1.5 GB", MemLabel(1536))
+	require.Equal(t, "30 GB", MemLabel(30720))
+}

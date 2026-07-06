@@ -39,3 +39,16 @@ func ShortDigest(d string) string {
 	}
 	return d
 }
+
+// CPULabel formatea mili-vCPU en unidades humanas ("0.25 vCPU", "1 vCPU").
+func CPULabel(milli int) string {
+	return strconv.FormatFloat(float64(milli)/1000, 'f', -1, 64) + " vCPU"
+}
+
+// MemLabel formatea MiB en la unidad natural ("512 MB", "1.5 GB", "2 GB").
+func MemLabel(mib int) string {
+	if mib < 1024 {
+		return strconv.Itoa(mib) + " MB"
+	}
+	return strconv.FormatFloat(float64(mib)/1024, 'f', -1, 64) + " GB"
+}
