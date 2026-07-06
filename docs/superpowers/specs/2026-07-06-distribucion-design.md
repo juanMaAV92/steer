@@ -9,15 +9,21 @@ una versión debe ser **un comando** (`git tag vX.Y.Z && git push origin vX.Y.Z`
 
 1. **Matriz de plataformas:** macOS arm64 + amd64, Linux amd64 + arm64, Windows amd64.
    Binario Go puro (sin CGO) → compilación cruzada desde un runner Linux.
-2. **Canales v1:** Homebrew tap (mac y linux), binarios directos en GitHub Releases
-   (tar.gz unix / **zip Windows**) con checksums, y `go install` documentado (ya
-   funciona). **Windows: solo zip** — Scoop diferido hasta que alguien lo pida (stanza
-   de minutos); winget/Chocolatey descartados.
+2. **Canales v1:** Homebrew tap (**macOS** — ver decisión 6), binarios directos en
+   GitHub Releases (tar.gz unix / **zip Windows**) con checksums, y `go install`
+   documentado (ya funciona; el camino para Linux junto al binario directo).
+   **Windows: solo zip** — Scoop diferido; winget/Chocolatey descartados.
 3. **Tap:** repo nuevo `juanMaAV92/homebrew-tap` (nombre genérico, sirve para futuras
-   herramientas). GoReleaser crea y mantiene `Formula/steer.rb` en cada release.
+   herramientas). GoReleaser crea y mantiene `Casks/steer.rb` en cada release.
 4. **Versionado:** semver con tags `v*`; primer release **`v0.1.0`** (alpha honesto,
    como el badge del README). `steer --version` muestra la versión del tag.
-5. **Sin firma/notarización de macOS en v1:** brew no la necesita; para descargas
+5. **Cask, no fórmula (adjudicado en ejecución, 2026-07-06):** GoReleaser ≥ v2.16
+   deprecó y su check rechaza el pipe `brews:` (fórmulas); el camino soportado es
+   `homebrew_casks:`. Implicación aceptada: los casks no existen en Homebrew de Linux —
+   Linux instala vía binario directo o `go install` (documentado). Sin bloque `test`
+   en el cask (limitación del formato). Se descartó pinnear GoReleaser viejo (deuda
+   sobre un pipe muerto).
+6. **Sin firma/notarización de macOS en v1:** brew no la necesita; para descargas
    directas por navegador se documenta `xattr -d com.apple.quarantine`. El certificado
    de Apple queda para cuando haya usuarios externos.
 
@@ -32,9 +38,8 @@ una versión debe ser **un comando** (`git tag vX.Y.Z && git push origin vX.Y.Z`
 - `checksum`, `snapshot` (para builds locales de prueba), `changelog` agrupado por
   conventional commits (`feat:` → Features, `fix:` → Bug Fixes; excluir `docs:`/`test:`/
   `refactor:`/`chore:`).
-- `brews`: fórmula `steer` → repo `juanMaAV92/homebrew-tap`, carpeta `Formula`,
-  homepage y descripción del README, `test` block con `steer --version`, token vía
-  env `TAP_GITHUB_TOKEN`.
+- `homebrew_casks`: cask `steer` → repo `juanMaAV92/homebrew-tap`, carpeta `Casks`,
+  homepage y descripción del README, token vía env `TAP_GITHUB_TOKEN`.
 
 ### Workflow `.github/workflows/release.yml`
 
@@ -58,9 +63,10 @@ Una sola vez (documentados en el plan, ejecutables con `gh`):
 README: sección **Install** reescrita —
 
 ```bash
-brew install juanMaAV92/tap/steer          # macOS y Linux
-go install github.com/juanMaAV92/steer/cmd/steer@latest
+brew install juanMaAV92/tap/steer          # macOS
+go install github.com/juanMaAV92/steer/cmd/steer@latest   # Linux y cualquier OS con Go
 # Windows: descargar steer_*_windows_amd64.zip del último Release y añadir al PATH
+# Linux sin Go: binario directo (tar.gz) del último Release
 ```
 
 - Nota Windows: usar **Windows Terminal** (la TUI con mouse degrada en cmd.exe clásico).
@@ -87,4 +93,4 @@ auto-update embebido en el binario; release candidates/canales beta.
 - `goreleaser release --snapshot --clean` local: verifica que los 5 artefactos se
   construyen y que `./dist/.../steer --version` reporta la versión snapshot.
 - El primer release real (`v0.1.0`) es la prueba end-to-end: Release publicado,
-  fórmula en el tap, `brew install juanMaAV92/tap/steer` funcionando en esta máquina.
+  cask en el tap, `brew install juanMaAV92/tap/steer` funcionando en esta máquina.
