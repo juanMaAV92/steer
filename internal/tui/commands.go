@@ -28,6 +28,21 @@ func startDeployCmd(ctx context.Context, dep core.Deployer, service, tag string)
 	}
 }
 
+// startResizeCmd arranca el resize (nueva revisión con recursos + rollout) y
+// devuelve el mismo deployStartedMsg del flujo de deploy, para compartir el
+// watch en vivo (Events + poll).
+func startResizeCmd(ctx context.Context, dep core.Deployer, service string, res core.Resources) tea.Cmd {
+	return func() tea.Msg {
+		baseline := ""
+		if evs, err := dep.ServiceEvents(ctx, service); err == nil && len(evs) > 0 {
+			baseline = evs[0].ID
+		}
+		var steps []string
+		err := dep.Resize(ctx, service, res, func(s string) { steps = append(steps, s) })
+		return deployStartedMsg{steps: steps, lastID: baseline, err: err}
+	}
+}
+
 func deployPollCmd(ctx context.Context, dep core.Deployer, service, lastID string) tea.Cmd {
 	return func() tea.Msg {
 		var fresh []core.ServiceEvent

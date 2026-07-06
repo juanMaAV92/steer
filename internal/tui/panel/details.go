@@ -10,12 +10,13 @@ import (
 
 // DetailsActionLabels son las etiquetas de los botones de acción del panel Details.
 // Fuente única: las usa DetailsView para renderizar y app.go para el hit-testing del click.
-var DetailsActionLabels = []string{"Deploy (d)", "Scale (s)", "Rollback (R)"}
+var DetailsActionLabels = []string{"Deploy (d)", "Scale (s)", "Rollback (R)", "Resize (z)"}
 
 // DetailsButtonLine es la línea (0-based) de la fila de botones dentro del output de
-// DetailsView: name(0), blank(1), running(2), pending(3), status(4), tag(5), blank(6), botones(7).
+// DetailsView: name(0), blank(1), running(2), pending(3), status(4), tag(5), resources(6),
+// blank(7), botones(8).
 // El test TestDetailsButtonLineMatchesRender la valida contra el render real.
-const DetailsButtonLine = 7
+const DetailsButtonLine = 8
 
 // DetailsView renderiza la pestaña Details con stats y la fila de acciones.
 // displayName es el nombre de visualización (sin prefijo de entorno).
@@ -33,7 +34,12 @@ func DetailsView(s core.ServiceStatus, writable bool, displayName string) string
 	if tag == "" {
 		tag = "—"
 	}
-	b.WriteString("tag       " + render.Accent(tag) + "\n\n")
+	b.WriteString("tag       " + render.Accent(tag) + "\n")
+	if s.Resources == (core.Resources{}) {
+		b.WriteString("cpu/mem   " + render.Dim("—") + "\n\n")
+	} else {
+		b.WriteString("cpu/mem   " + render.Accent(render.CPULabel(s.Resources.CPUMilli)+" · "+render.MemLabel(s.Resources.MemoryMiB)) + "\n\n")
+	}
 	if writable {
 		b.WriteString(render.Buttons(DetailsActionLabels))
 	} else {

@@ -8,6 +8,7 @@ type keyMap struct {
 	Deploy, Scale, Rollback, Refresh, Help, Quit key.Binding
 	Left, Right, Context, Space                  key.Binding
 	Filter                                       key.Binding
+	Resize                                       key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -29,9 +30,10 @@ func defaultKeys() keyMap {
 		Right:    key.NewBinding(key.WithKeys("right", "l")),
 		Context:  key.NewBinding(key.WithKeys("c")),
 		Filter:   key.NewBinding(key.WithKeys("/")),
+		Resize:   key.NewBinding(key.WithKeys("z")),
 	}
 }
 
 func (k keyMap) shortHelp() string {
-	return "↑↓/click select · tab switch panel · d deploy · s scale · R rollback · r refresh · c context · ? help · q quit"
+	return "↑↓/click select · tab switch panel · d deploy · s scale · R rollback · z resize · r refresh · c context · ? help · q quit"
 }

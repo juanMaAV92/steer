@@ -40,6 +40,7 @@ const (
 	actionRollback actionKind = iota
 	actionDeploy
 	actionScale
+	actionResize
 )
 
 // deployState agrupa el estado del watch de deploy en vivo; Reset lo limpia entero.
@@ -465,11 +466,14 @@ func (m Model) handleOverlayResult(res tea.Msg) (tea.Model, tea.Cmd) {
 // applyActionConfirmed ejecuta una acción confirmada (desde teclado o click).
 // El deploy va por el flujo en vivo (Events + poll); scale/rollback por runActionCmd.
 func (m *Model) applyActionConfirmed(r actionConfirmedMsg) tea.Cmd {
-	if r.kind == actionDeploy {
+	if r.kind == actionDeploy || r.kind == actionResize {
 		m.focus = focusPanel
 		m.tabs.Active = panel.TabEvents
 		m.events.Reset()
 		m.deploy = deployState{Active: true, Service: r.service}
+		if r.kind == actionResize {
+			return startResizeCmd(m.runCtx, m.dep, r.service, r.resources)
+		}
 		return startDeployCmd(m.runCtx, m.dep, r.service, r.input)
 	}
 	return m.runActionCmd(r.kind, r.service, r.input)
@@ -484,6 +488,9 @@ func (m Model) handleFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.closeForm() // esc sigue cancelando; el veredicto llegará obsoleto
 		}
 		return m, nil
+	}
+	if m.form.kind == actionResize {
+		return m.handleResizeFormKey(msg)
 	}
 	switch {
 	case key.Matches(msg, m.keys.Esc):
@@ -516,6 +523,44 @@ func (m Model) handleFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.form.moveFocus(-1)
 	default:
 		m.form.typeKey(msg)
+	}
+	return m, nil
+}
+
+// handleResizeFormKey captura el teclado del formulario de resize: ↑↓ mueven el
+// campo activo (cpu → memoria → botones), ←→ cambian el valor del campo activo
+// (o el foco confirmar/cancelar en la fila de botones), tab avanza de campo y
+// enter confirma solo desde la fila de botones (si no, salta a ella).
+func (m Model) handleResizeFormKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Esc):
+		m.closeForm()
+	case key.Matches(msg, m.keys.Enter):
+		if m.form.resField != 2 {
+			m.form.resField = 2
+			return m, nil
+		}
+		done, result := m.form.activate()
+		if done {
+			if result == nil {
+				m.closeForm()
+			} else {
+				m.form = nil
+			}
+		}
+		if result != nil {
+			return m.handleOverlayResult(result)
+		}
+	case msg.Type == tea.KeyDown:
+		m.form.moveResField(1)
+	case msg.Type == tea.KeyUp:
+		m.form.moveResField(-1)
+	case key.Matches(msg, m.keys.Tab):
+		m.form.moveResField(1)
+	case key.Matches(msg, m.keys.Right):
+		m.form.moveResValue(1)
+	case key.Matches(msg, m.keys.Left):
+		m.form.moveResValue(-1)
 	}
 	return m, nil
 }
@@ -635,7 +680,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.overlay = newPickerOverlay(m.keys, m.contexts, m.current.Name)
 		m.notice = ""
 		return m, nil
-	case key.Matches(msg, m.keys.Deploy), key.Matches(msg, m.keys.Scale), key.Matches(msg, m.keys.Rollback):
+	case key.Matches(msg, m.keys.Deploy), key.Matches(msg, m.keys.Scale), key.Matches(msg, m.keys.Rollback), key.Matches(msg, m.keys.Resize):
 		return m.openAction(msg)
 	case key.Matches(msg, m.keys.Filter):
 		if m.focus == focusSidebar {
@@ -736,6 +781,12 @@ func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.form = newActionForm(actionScale, s.Name)
 	case key.Matches(msg, m.keys.Rollback):
 		m.form = newActionForm(actionRollback, s.Name)
+	case key.Matches(msg, m.keys.Resize):
+		if s.Resources == (core.Resources{}) {
+			m.notice = "task-level resources not set — resize unavailable"
+			return m, nil
+		}
+		m.form = newResizeForm(s.Name, m.dep.ResourceOptions(), s.Resources)
 	}
 	m.tabs.Active = panel.TabDetails // el formulario vive en Details
 	// las acciones son sobre servicios: si había un repo seleccionado (panel en TAGS)
@@ -780,6 +831,8 @@ func actionKindFor(idx int) actionKind {
 		return actionScale
 	case 2:
 		return actionRollback
+	case 3:
+		return actionResize
 	default:
 		return actionDeploy
 	}
@@ -800,6 +853,18 @@ func (m *Model) clickForm(msg tea.MouseMsg) tea.Cmd {
 	formY0 := topBarHeight + borderTop + 2 + panel.DetailsButtonLine + 1
 	row := msg.Y - formY0
 	x := msg.X - (m.sidebarW + 2) // contenido del panel: divisor + PaddingLeft
+	if fld, idx := m.form.resizeValueAt(row, x); fld >= 0 {
+		switch fld {
+		case 0:
+			prevMem := m.form.resOpts[m.form.cpuIdx].MemoryMiB[m.form.memIdx]
+			m.form.cpuIdx = idx
+			m.form.memIdx = nearestIdx(m.form.resOpts[m.form.cpuIdx].MemoryMiB, prevMem)
+		case 1:
+			m.form.memIdx = idx
+		}
+		m.form.resField = fld
+		return nil
+	}
 	if idx := m.form.tagAt(row); idx >= 0 {
 		m.form.pick = idx
 		m.form.input = m.form.visibleTags()[idx].Tag
@@ -844,7 +909,15 @@ func (m *Model) openActionKind(kind actionKind) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	m.form = newActionForm(kind, s.Name)
+	if kind == actionResize {
+		if s.Resources == (core.Resources{}) {
+			m.notice = "task-level resources not set — resize unavailable"
+			return nil
+		}
+		m.form = newResizeForm(s.Name, m.dep.ResourceOptions(), s.Resources)
+	} else {
+		m.form = newActionForm(kind, s.Name)
+	}
 	m.tabs.Active = panel.TabDetails
 	// las acciones son sobre servicios: forzar el panel de vuelta a Services
 	// para que el formulario sea visible (ver comentario en openAction).

@@ -66,6 +66,18 @@ func newTestModel(services []core.ServiceStatus) Model {
 	return m
 }
 
+// newTestModelWithDeployer es como newTestModel pero con el FakeDeployer inyectado
+// (para inspeccionar sus llamadas, p. ej. ResizeCalls).
+func newTestModelWithDeployer(t *testing.T, fake *coretest.FakeDeployer) Model {
+	t.Helper()
+	factory := fakeFactory(fake)
+	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
+	m := New(context.Background(), factory, []config.Context{cur}, cur)
+	m.sidebar.setServices(fake.Services)
+	m, _ = applySize(m, 120, 40)
+	return m
+}
+
 // newTestModelWithRegistry es como newTestModel pero con un registry fake y un
 // contexto con bloque [images] (para probar la capacidad IMAGES).
 func newTestModelWithRegistry(services []core.ServiceStatus, reg core.Registry) Model {
@@ -619,6 +631,50 @@ func TestReadOnlyDetailsButtonsNoOp(t *testing.T) {
 	m = mustUpdate(t, m, click)
 	require.Nil(t, m.overlay)
 	require.Nil(t, m.form)
+}
+
+// TestResizeFlowStartsLiveRollout: z abre el form preseleccionado; confirmar entra a Events.
+func TestResizeFlowStartsLiveRollout(t *testing.T) {
+	fake := &coretest.FakeDeployer{Services: []core.ServiceStatus{
+		{Name: "api", Running: 1, Desired: 1, Resources: core.Resources{CPUMilli: 250, MemoryMiB: 512}},
+	}}
+	m := newTestModelWithDeployer(t, fake)
+	m = mustUpdate(t, m, keyMsg("z"))
+	require.NotNil(t, m.form)
+	require.Equal(t, actionResize, m.form.kind)
+	// ←→ sube el tier de cpu; enter desde botones confirma
+	m = mustUpdate(t, m, tea.KeyMsg{Type: tea.KeyRight})
+	m.form.resField = 2
+	updated, cmd := m.Update(keyMsg("enter"))
+	m = updated.(Model)
+	require.Nil(t, m.form)
+	require.NotNil(t, cmd)
+	require.Equal(t, panel.TabEvents, m.tabs.Active)
+	require.True(t, m.deploy.Active)
+	msg := cmd().(deployStartedMsg)
+	require.NoError(t, msg.err)
+	require.Len(t, fake.ResizeCalls, 1)
+}
+
+// TestResizeUnavailableWithoutResources: sin recursos conocidos, z no abre el form.
+func TestResizeUnavailableWithoutResources(t *testing.T) {
+	m := newTestModel(sampleServices()) // sampleServices sin Resources
+	m = mustUpdate(t, m, keyMsg("z"))
+	require.Nil(t, m.form)
+	require.Contains(t, m.notice, "resize unavailable")
+}
+
+// TestClickResizeValue: click en un valor del picker lo selecciona (anclado al render).
+func TestClickResizeValue(t *testing.T) {
+	fake := &coretest.FakeDeployer{Services: []core.ServiceStatus{
+		{Name: "api", Running: 1, Desired: 1, Resources: core.Resources{CPUMilli: 250, MemoryMiB: 512}},
+	}}
+	m := newTestModelWithDeployer(t, fake)
+	m = mustUpdate(t, m, keyMsg("z"))
+	clickX, clickY := findInView(t, m.View(), "0.5 vCPU")
+	m = mustUpdate(t, m, tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: clickX, Y: clickY})
+	require.NotNil(t, m.form)
+	require.Equal(t, 500, m.form.selectedResources().CPUMilli)
 }
 
 func TestClickServiceWithScrolledSidebar(t *testing.T) {

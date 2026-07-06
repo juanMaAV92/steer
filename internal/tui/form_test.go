@@ -142,3 +142,49 @@ func TestFormStatusRowShiftsGeometry(t *testing.T) {
 	require.Equal(t, 0, f.tagAt(4)) // los tags empiezan tras la línea de estado
 	require.Equal(t, -1, f.tagAt(3))
 }
+
+func resizeOpts() []core.ResourceOption {
+	return []core.ResourceOption{
+		{CPUMilli: 250, MemoryMiB: []int{512, 1024, 2048}},
+		{CPUMilli: 500, MemoryMiB: []int{1024, 2048, 3072, 4096}},
+	}
+}
+
+func TestResizeFormPreselectsCurrentAndNavigates(t *testing.T) {
+	f := newResizeForm("api", resizeOpts(), core.Resources{CPUMilli: 500, MemoryMiB: 2048})
+	require.Equal(t, 1, f.cpuIdx) // preseleccionado en el actual
+	require.Equal(t, 1, f.memIdx)
+	// ←→ cambia el valor del campo activo (cpu)
+	f.moveResValue(1)
+	require.Equal(t, 0, f.cpuIdx) // wrap: 500→250
+	// al cambiar el tier, la memoria salta a la válida más cercana (2048 existe en 250)
+	require.Equal(t, 2048, f.selectedResources().MemoryMiB)
+	// ↑↓ cambia de campo: cpu(0) → mem(1) → botones(2)
+	f.moveResField(1)
+	require.Equal(t, 1, f.resField)
+	f.moveResValue(1)
+	require.Equal(t, core.Resources{CPUMilli: 250, MemoryMiB: 512}, f.selectedResources()) // wrap 2048→512
+}
+
+func TestResizeFormNearestMemoryOnTierChange(t *testing.T) {
+	f := newResizeForm("api", resizeOpts(), core.Resources{CPUMilli: 500, MemoryMiB: 4096})
+	f.resField = 0
+	f.moveResValue(-1) // 500 → 250: 4096 no existe; la más cercana es 2048
+	require.Equal(t, core.Resources{CPUMilli: 250, MemoryMiB: 2048}, f.selectedResources())
+}
+
+func TestResizeFormGeometryAndActivate(t *testing.T) {
+	f := newResizeForm("api", resizeOpts(), core.Resources{CPUMilli: 250, MemoryMiB: 512})
+	require.Equal(t, 4, f.buttonRow()) // borde(0) título(1) cpu(2) mem(3) botones(4)
+	out := stripANSI(f.view())
+	require.Contains(t, out, "0.25 vCPU")
+	require.Contains(t, out, "512 MB")
+	require.Contains(t, out, "● now")
+	// activate emite el combo elegido
+	f.resField = 2 // botones, foco en confirmar
+	done, msg := f.activate()
+	require.True(t, done)
+	conf := msg.(actionConfirmedMsg)
+	require.Equal(t, actionResize, conf.kind)
+	require.Equal(t, core.Resources{CPUMilli: 250, MemoryMiB: 512}, conf.resources)
+}
