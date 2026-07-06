@@ -245,6 +245,44 @@ func TestDeployWithoutImagesConfigStillDeploys(t *testing.T) {
 	require.Equal(t, []string{"catalog/v2"}, fake.DeployCalls)
 }
 
+func TestResizeHappyPathWithPreview(t *testing.T) {
+	fake := &coretest.FakeDeployer{Services: []core.ServiceStatus{
+		{Name: "catalog", Resources: core.Resources{CPUMilli: 250, MemoryMiB: 512}},
+	}}
+	withFakeDeployer(t, fake)
+	out, err := runRoot(t, "service", "resize", "-s", "catalog", "--cpu", "0.5", "--memory", "2GB", "-y")
+	require.NoError(t, err)
+	require.Equal(t, []string{"catalog/500/2048"}, fake.ResizeCalls)
+	require.Contains(t, out, "0.25 vCPU") // preview: actual
+	require.Contains(t, out, "0.5 vCPU")  // preview: objetivo
+	require.Contains(t, out, "rollback")  // sugiere rollback
+}
+
+func TestResizeRejectsInvalidComboTeaching(t *testing.T) {
+	withFakeDeployer(t, &coretest.FakeDeployer{})
+	_, err := runRoot(t, "service", "resize", "-s", "catalog", "--cpu", "0.25", "--memory", "8GB", "-y")
+	require.ErrorContains(t, err, "cpu 0.25 vCPU supports")
+	require.ErrorContains(t, err, "512 MB") // enseña las válidas del tier
+	require.ErrorContains(t, err, "2 GB")
+}
+
+func TestResizeRejectsUnknownTier(t *testing.T) {
+	withFakeDeployer(t, &coretest.FakeDeployer{})
+	_, err := runRoot(t, "service", "resize", "-s", "catalog", "--cpu", "3", "--memory", "4GB", "-y")
+	require.ErrorContains(t, err, "valid cpu tiers")
+}
+
+func TestStatusShowsResources(t *testing.T) {
+	withFakeDeployer(t, &coretest.FakeDeployer{Services: []core.ServiceStatus{
+		{Name: "catalog", Running: 1, Desired: 1, Resources: core.Resources{CPUMilli: 500, MemoryMiB: 1024}},
+	}})
+	out, err := runRoot(t, "service", "status")
+	require.NoError(t, err)
+	require.Contains(t, out, "CPU")
+	require.Contains(t, out, "0.5")
+	require.Contains(t, out, "1 GB")
+}
+
 func TestDeployBlocksWhenRepoMissingCLI(t *testing.T) {
 	fake := &coretest.FakeDeployer{CurrentTagValue: "v1"}
 	reg := &coretest.FakeRegistry{HasTagErr: core.ErrRepoNotFound}

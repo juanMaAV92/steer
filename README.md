@@ -56,7 +56,9 @@ just want to ship**.
 
 - 🛡️ **Guardrails by default** — contexts marked `writable = false` (e.g. prod) block every
   mutating action, in both CLI and TUI. Deploys preview *what will happen* and ask before
-  applying. Rollback is one command. Hard to break things by accident.
+  applying. Rollback is one command. Resizing CPU/memory only offers combos your provider
+  actually supports — via a picker in the TUI, and teaching errors in the CLI. Hard to
+  break things by accident.
 - 🖱️ **A TUI you can actually click** — everything is mouse-friendly: services, section
   headers, tabs, buttons and forms. Keyboard works everywhere too, and every shortcut is
   visible on screen.
@@ -85,6 +87,7 @@ steer tui
 steer service status
 steer --context stg service deploy -s my-svc -t v1.2.3 --watch
 steer service scale -s my-svc --count 3
+steer service resize -s my-svc --cpu 0.5 --memory 2GB
 steer service rollback -s my-svc
 ```
 
@@ -97,7 +100,7 @@ V1 targets **AWS** behind agnostic interfaces. Commands are named by **capabilit
 AWS service, so the same command keeps working when other clouds are added.
 
 1. ✅ Foundation — config + AWS session + capability interfaces + CLI skeleton
-2. ✅ **`service`** — deploy / scale / rollback / status with preview and watch
+2. ✅ **`service`** — deploy / scale / rollback / resize / status with preview and watch
 3. ✅ TUI dashboard — mouse-driven, multi-context, live rollouts
 4. ✅ **`image`** (ECR) — repos & tags in TUI and CLI, deploy tag-picker, registry-validated deploys, stuck-rollout detection
 5. ⏳ Distribution (Homebrew) & onboarding wizard — next up

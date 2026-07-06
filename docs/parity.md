@@ -18,6 +18,7 @@ esté documentado aquí con su plan de cierre.
 | Watch de rollout + detección de atasco | `deploy -w`: eventos en vivo, corta al 3er fallo de pull con sugerencia de rollback | Pestaña Events en vivo, corta igual y sugiere `R` | ✅ |
 | Scale | `service scale -s -c [-y]` | Formulario Scale | ✅ |
 | Rollback | `service rollback -s [-y]` | Formulario Rollback (confirm) | ✅ |
+| Resize (CPU/memoria) | `service resize -s --cpu --memory [-w]` | Formulario `[ Resize (z) ]` con picker de combos | ✅ |
 | Repos de imágenes | `image ls` (repo + último tag + antigüedad) | Sección IMAGES (nombres; el detalle vive en el panel) | ✅ funcional (ver nota 1) |
 | Tags de un repo + desplegado | `image tags -r` (`● now`) | Panel TAGS al seleccionar repo (`● now`) | ✅ |
 | Selección de contexto | `--context` / `STEER_CONTEXT` / `default_context` | Switcher en vivo (`c` / click en top bar) | ✅ (modelos distintos, misma función) |

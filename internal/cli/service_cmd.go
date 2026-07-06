@@ -22,13 +22,13 @@ func NewServiceCmd() *cobra.Command {
 		Aliases: []string{"svc"},
 		Short:   "Manage compute services (deploy, scale, status...)",
 	}
-	cmd.AddCommand(newServiceStatusCmd(), newServiceDeployCmd(), newServiceScaleCmd(), newServiceRollbackCmd())
+	cmd.AddCommand(newServiceStatusCmd(), newServiceDeployCmd(), newServiceScaleCmd(), newServiceRollbackCmd(), newServiceResizeCmd())
 	return cmd
 }
 
 // serviceStatusTable construye la tabla de estado de servicios.
 func serviceStatusTable(services []core.ServiceStatus) string {
-	headers := []string{"", "SERVICE", "DESIRED", "RUNNING", "PENDING", "STATUS", "TAG"}
+	headers := []string{"", "SERVICE", "DESIRED", "RUNNING", "PENDING", "STATUS", "TAG", "CPU", "MEM"}
 	rows := make([][]string, 0, len(services))
 	for _, s := range services {
 		running := strconv.Itoa(s.Running)
@@ -39,6 +39,11 @@ func serviceStatusTable(services []core.ServiceStatus) string {
 		if s.Pending > 0 { // hay instancias arrancando → amarillo
 			pending = render.Warn(pending)
 		}
+		cpu, mem := "—", "—"
+		if s.Resources != (core.Resources{}) {
+			cpu = render.CPULabel(s.Resources.CPUMilli)
+			mem = render.MemLabel(s.Resources.MemoryMiB)
+		}
 		rows = append(rows, []string{
 			render.Symbol(render.StatusLevel(s.Running, s.Desired)),
 			s.Name,
@@ -47,6 +52,8 @@ func serviceStatusTable(services []core.ServiceStatus) string {
 			pending,
 			s.Status,
 			render.Accent(s.Tag),
+			cpu,
+			mem,
 		})
 	}
 	return render.Table(headers, rows)
@@ -374,6 +381,108 @@ func newServiceRollbackCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&service, "service", "s", "", "service short name")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip confirmation")
+	return cmd
+}
+
+func newServiceResizeCmd() *cobra.Command {
+	var service, cpu, memory string
+	var yes, watch bool
+	var interval int
+	cmd := &cobra.Command{
+		Use:   "resize",
+		Short: "Update the CPU/memory of a service (new revision + rollout)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if service == "" || cpu == "" || memory == "" {
+				return fmt.Errorf("--service, --cpu and --memory are required")
+			}
+			app := FromContext(cmd.Context())
+			if err := app.RequireWritable(); err != nil {
+				return err
+			}
+			cpuMilli, err := parseCPU(cpu)
+			if err != nil {
+				return err
+			}
+			memMiB, err := parseMemory(memory)
+			if err != nil {
+				return err
+			}
+			dep, err := app.Deployer(cmd.Context())
+			if err != nil {
+				return err
+			}
+			// validación que enseña, derivada de la tabla del provider
+			opts := dep.ResourceOptions()
+			var tier *core.ResourceOption
+			for i := range opts {
+				if opts[i].CPUMilli == cpuMilli {
+					tier = &opts[i]
+					break
+				}
+			}
+			if tier == nil {
+				var tiers []string
+				for _, o := range opts {
+					tiers = append(tiers, render.CPULabel(o.CPUMilli))
+				}
+				return fmt.Errorf("valid cpu tiers: %s", strings.Join(tiers, ", "))
+			}
+			validMem := false
+			for _, m := range tier.MemoryMiB {
+				if m == memMiB {
+					validMem = true
+					break
+				}
+			}
+			if !validMem {
+				var mems []string
+				for _, m := range tier.MemoryMiB {
+					mems = append(mems, render.MemLabel(m))
+				}
+				return fmt.Errorf("cpu %s supports: %s; got %s",
+					render.CPULabel(cpuMilli), strings.Join(mems, ", "), render.MemLabel(memMiB))
+			}
+			realName := app.Ctx.ServiceName(service)
+			// recursos actuales para el preview (mejor esfuerzo)
+			currentLabel := "unknown"
+			if svcs, err := dep.ListServices(cmd.Context()); err == nil {
+				for _, s := range svcs {
+					if s.Name == realName && s.Resources != (core.Resources{}) {
+						currentLabel = render.CPULabel(s.Resources.CPUMilli) + " · " + render.MemLabel(s.Resources.MemoryMiB)
+					}
+				}
+			}
+			out := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(out, "%s (%s):\n  %s: %s %s %s\n",
+				render.Bold("Resize preview"), app.Ctx.Name, render.Bold(service),
+				render.Dim(currentLabel), render.Dim("->"),
+				render.Accent(render.CPULabel(cpuMilli)+" · "+render.MemLabel(memMiB)))
+			if !yes {
+				_, _ = fmt.Fprint(out, "Apply? [y/N]: ")
+				if !confirm(cmd.InOrStdin()) {
+					_, _ = fmt.Fprintln(out, render.Dim("aborted"))
+					return nil
+				}
+			}
+			if err := dep.Resize(cmd.Context(), realName, core.Resources{CPUMilli: cpuMilli, MemoryMiB: memMiB},
+				func(s string) { _, _ = fmt.Fprintln(out, render.Dim("[*] "+s)) }); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(out, "%s %s\n%s\n",
+				render.Success("✓ resized"), render.Bold(service),
+				render.Dim(fmt.Sprintf("rollback with: steer --context %s service rollback -s %s", app.Ctx.Name, service)))
+			if watch {
+				return watchRollout(cmd.Context(), out, dep, realName, service, interval)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&service, "service", "s", "", "service short name")
+	cmd.Flags().StringVar(&cpu, "cpu", "", "target cpu (0.5, 1 or 500m)")
+	cmd.Flags().StringVar(&memory, "memory", "", "target memory (2048, 2GB or 512MB)")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip confirmation")
+	cmd.Flags().BoolVarP(&watch, "watch", "w", false, "follow the rollout until it completes")
+	cmd.Flags().IntVar(&interval, "interval", 3, "poll interval in seconds for --watch")
 	return cmd
 }
 
