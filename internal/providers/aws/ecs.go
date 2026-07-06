@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
@@ -66,13 +67,15 @@ func (d *ECSDeployer) ListServices(ctx context.Context) ([]core.ServiceStatus, e
 			return nil, err
 		}
 		for _, s := range desc.Services {
+			tag, res := d.taskDefInfo(ctx, awssdk.ToString(s.TaskDefinition))
 			out = append(out, core.ServiceStatus{
-				Name:    awssdk.ToString(s.ServiceName),
-				Running: int(s.RunningCount),
-				Desired: int(s.DesiredCount),
-				Pending: int(s.PendingCount),
-				Status:  awssdk.ToString(s.Status),
-				Tag:     d.tagForTaskDef(ctx, awssdk.ToString(s.TaskDefinition)),
+				Name:      awssdk.ToString(s.ServiceName),
+				Running:   int(s.RunningCount),
+				Desired:   int(s.DesiredCount),
+				Pending:   int(s.PendingCount),
+				Status:    awssdk.ToString(s.Status),
+				Tag:       tag,
+				Resources: res,
 			})
 		}
 	}
@@ -135,19 +138,28 @@ func (d *ECSDeployer) ServiceEvents(ctx context.Context, service string) ([]core
 	return out, nil
 }
 
-// tagForTaskDef resuelve el tag de imagen de una task def; "" si no se puede.
-func (d *ECSDeployer) tagForTaskDef(ctx context.Context, tdArn string) string {
+// taskDefInfo lee tag de imagen y recursos de una task def; ceros si no se puede.
+func (d *ECSDeployer) taskDefInfo(ctx context.Context, tdArn string) (tag string, res core.Resources) {
 	if tdArn == "" {
-		return ""
+		return "", core.Resources{}
 	}
 	out, err := d.api.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{
 		TaskDefinition: awssdk.String(tdArn),
 	})
-	if err != nil || out == nil || out.TaskDefinition == nil ||
-		len(out.TaskDefinition.ContainerDefinitions) == 0 {
-		return ""
+	if err != nil || out == nil || out.TaskDefinition == nil {
+		return "", core.Resources{}
 	}
-	return tagFromImage(awssdk.ToString(out.TaskDefinition.ContainerDefinitions[0].Image))
+	td := out.TaskDefinition
+	if len(td.ContainerDefinitions) > 0 {
+		tag = tagFromImage(awssdk.ToString(td.ContainerDefinitions[0].Image))
+	}
+	if cpuUnits, err := strconv.Atoi(awssdk.ToString(td.Cpu)); err == nil {
+		res.CPUMilli = cpuUnits * 1000 / 1024
+	}
+	if mib, err := strconv.Atoi(awssdk.ToString(td.Memory)); err == nil {
+		res.MemoryMiB = mib
+	}
+	return tag, res
 }
 
 func chunk(xs []string, n int) [][]string {
@@ -268,12 +280,24 @@ func (d *ECSDeployer) Deploy(ctx context.Context, service, tag string, log core.
 	if len(td.ContainerDefinitions) == 0 {
 		return fmt.Errorf("task definition for %q has no containers", service)
 	}
+	return d.registerRevision(ctx, service, td, log, func(in *ecs.RegisterTaskDefinitionInput) {
+		in.ContainerDefinitions[0].Image = awssdk.String(replaceTag(awssdk.ToString(in.ContainerDefinitions[0].Image), tag))
+	})
+}
+
+// registerRevision clona la task def actual (preservando todos sus campos),
+// aplica mutate sobre el input y apunta el servicio a la nueva revisión.
+// Compartido por Deploy (cambia imagen) y Resize (cambia cpu/memoria).
+func (d *ECSDeployer) registerRevision(ctx context.Context, service string, td *ecstypes.TaskDefinition,
+	log core.StepLogger, mutate func(*ecs.RegisterTaskDefinitionInput)) error {
+	step := func(msg string) {
+		if log != nil {
+			log(msg)
+		}
+	}
 	containers := make([]ecstypes.ContainerDefinition, len(td.ContainerDefinitions))
 	copy(containers, td.ContainerDefinitions)
-	containers[0].Image = awssdk.String(replaceTag(awssdk.ToString(containers[0].Image), tag))
-
-	step("registering new task definition revision")
-	reg, err := d.api.RegisterTaskDefinition(ctx, &ecs.RegisterTaskDefinitionInput{
+	in := &ecs.RegisterTaskDefinitionInput{
 		Family:                  td.Family,
 		ContainerDefinitions:    containers,
 		Cpu:                     td.Cpu,
@@ -289,12 +313,14 @@ func (d *ECSDeployer) Deploy(ctx context.Context, service, tag string, log core.
 		ProxyConfiguration:      td.ProxyConfiguration,
 		PidMode:                 td.PidMode,
 		IpcMode:                 td.IpcMode,
-	})
+	}
+	mutate(in)
+	step("registering new task definition revision")
+	reg, err := d.api.RegisterTaskDefinition(ctx, in)
 	if err != nil {
 		return err
 	}
 	step(fmt.Sprintf("registered %s:%d", awssdk.ToString(reg.TaskDefinition.Family), reg.TaskDefinition.Revision))
-
 	step("updating service")
 	_, err = d.api.UpdateService(ctx, &ecs.UpdateServiceInput{
 		Cluster:        awssdk.String(d.cluster),
@@ -325,7 +351,41 @@ func memRange(from, to int) []int {
 // ResourceOptions devuelve la tabla Fargate.
 func (d *ECSDeployer) ResourceOptions() []core.ResourceOption { return fargateOptions }
 
-// Resize se completa en la siguiente task del plan.
-func (d *ECSDeployer) Resize(context.Context, string, core.Resources, core.StepLogger) error {
-	return fmt.Errorf("resize: not implemented yet")
+// Resize registra una nueva revisión con los recursos dados y actualiza el servicio.
+func (d *ECSDeployer) Resize(ctx context.Context, service string, res core.Resources, log core.StepLogger) error {
+	if !validResources(res) {
+		return fmt.Errorf("invalid cpu/memory combination: %dm / %d MiB", res.CPUMilli, res.MemoryMiB)
+	}
+	step := func(msg string) {
+		if log != nil {
+			log(msg)
+		}
+	}
+	step("reading current task definition")
+	td, err := d.currentTaskDef(ctx, service)
+	if err != nil {
+		return err
+	}
+	if awssdk.ToString(td.Cpu) == "" || awssdk.ToString(td.Memory) == "" {
+		return fmt.Errorf("task-level resources not set — EC2 launch type not supported yet")
+	}
+	return d.registerRevision(ctx, service, td, log, func(in *ecs.RegisterTaskDefinitionInput) {
+		in.Cpu = awssdk.String(strconv.Itoa(res.CPUMilli * 1024 / 1000))
+		in.Memory = awssdk.String(strconv.Itoa(res.MemoryMiB))
+	})
+}
+
+// validResources comprueba el combo contra la tabla Fargate.
+func validResources(res core.Resources) bool {
+	for _, opt := range fargateOptions {
+		if opt.CPUMilli != res.CPUMilli {
+			continue
+		}
+		for _, m := range opt.MemoryMiB {
+			if m == res.MemoryMiB {
+				return true
+			}
+		}
+	}
+	return false
 }

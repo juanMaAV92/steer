@@ -22,6 +22,11 @@ type fakeECS struct {
 
 	registerIn *ecs.RegisterTaskDefinitionInput
 	updateIn   *ecs.UpdateServiceInput
+
+	// lastRegisterInput/updateServiceCalled: alias de registerIn/updateIn
+	// para los tests de Resize (nombres más explícitos sobre lo que verifican).
+	lastRegisterInput   *ecs.RegisterTaskDefinitionInput
+	updateServiceCalled bool
 }
 
 func (f *fakeECS) ListServices(_ context.Context, _ *ecs.ListServicesInput, _ ...func(*ecs.Options)) (*ecs.ListServicesOutput, error) {
@@ -40,11 +45,32 @@ func (f *fakeECS) DescribeTaskDefinition(_ context.Context, _ *ecs.DescribeTaskD
 }
 func (f *fakeECS) RegisterTaskDefinition(_ context.Context, in *ecs.RegisterTaskDefinitionInput, _ ...func(*ecs.Options)) (*ecs.RegisterTaskDefinitionOutput, error) {
 	f.registerIn = in
+	f.lastRegisterInput = in
 	return f.registerOut, nil
 }
 func (f *fakeECS) UpdateService(_ context.Context, in *ecs.UpdateServiceInput, _ ...func(*ecs.Options)) (*ecs.UpdateServiceOutput, error) {
 	f.updateIn = in
+	f.updateServiceCalled = true
 	return &ecs.UpdateServiceOutput{}, nil
+}
+
+// newFakeECSWithTaskDef arma un fake cuyo DescribeServices apunta a una task def
+// fija y cuyo DescribeTaskDefinition devuelve td; RegisterTaskDefinition responde
+// con la siguiente revisión de la misma family.
+func newFakeECSWithTaskDef(td ecstypes.TaskDefinition) *fakeECS {
+	family := awssdk.ToString(td.Family)
+	arn := "arn:td/" + family + ":1"
+	return &fakeECS{
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			TaskDefinition: awssdk.String(arn),
+		}}},
+		taskDefOut: &ecs.DescribeTaskDefinitionOutput{TaskDefinition: &td},
+		registerOut: &ecs.RegisterTaskDefinitionOutput{TaskDefinition: &ecstypes.TaskDefinition{
+			Family:            td.Family,
+			Revision:          2,
+			TaskDefinitionArn: awssdk.String("arn:td/" + family + ":2"),
+		}},
+	}
 }
 func (f *fakeECS) ListTaskDefinitions(_ context.Context, _ *ecs.ListTaskDefinitionsInput, _ ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error) {
 	return f.listTDOut, nil
@@ -292,4 +318,80 @@ func TestServiceEventsMarksErrors(t *testing.T) {
 	require.Len(t, evs, 2)
 	require.True(t, evs[0].IsError)
 	require.False(t, evs[1].IsError)
+}
+
+func TestResizeRegistersRevisionPreservingEverything(t *testing.T) {
+	// task def actual con Cpu/Memory y campos que DEBEN sobrevivir al clone
+	api := newFakeECSWithTaskDef(ecstypes.TaskDefinition{
+		Family: awssdk.String("nao-api"),
+		Cpu:    awssdk.String("256"), Memory: awssdk.String("512"),
+		ContainerDefinitions: []ecstypes.ContainerDefinition{
+			{Image: awssdk.String("repo/api:v1"), Name: awssdk.String("app")},
+		},
+		ExecutionRoleArn:        awssdk.String("arn:exec"),
+		TaskRoleArn:             awssdk.String("arn:task"),
+		NetworkMode:             ecstypes.NetworkModeAwsvpc,
+		RequiresCompatibilities: []ecstypes.Compatibility{ecstypes.CompatibilityFargate},
+	})
+	d := newDeployer(api, "cluster")
+	var steps []string
+	err := d.Resize(context.Background(), "svc", core.Resources{CPUMilli: 500, MemoryMiB: 1024},
+		func(s string) { steps = append(steps, s) })
+	require.NoError(t, err)
+	in := api.lastRegisterInput
+	require.Equal(t, "512", awssdk.ToString(in.Cpu))     // 500m → 512 unidades
+	require.Equal(t, "1024", awssdk.ToString(in.Memory)) // MiB directo
+	// el clone preserva todo lo demás
+	require.Equal(t, "repo/api:v1", awssdk.ToString(in.ContainerDefinitions[0].Image))
+	require.Equal(t, "arn:exec", awssdk.ToString(in.ExecutionRoleArn))
+	require.Equal(t, "arn:task", awssdk.ToString(in.TaskRoleArn))
+	require.Equal(t, ecstypes.NetworkModeAwsvpc, in.NetworkMode)
+	require.NotEmpty(t, steps)
+	require.True(t, api.updateServiceCalled) // el servicio apunta a la nueva revisión
+}
+
+func TestResizeRejectsInvalidComboAndEC2(t *testing.T) {
+	api := newFakeECSWithTaskDef(ecstypes.TaskDefinition{
+		Family: awssdk.String("nao-api"),
+		Cpu:    awssdk.String("256"), Memory: awssdk.String("512"),
+		ContainerDefinitions: []ecstypes.ContainerDefinition{{Image: awssdk.String("repo/api:v1")}},
+	})
+	d := newDeployer(api, "cluster")
+	// combo inválido: 0.25 vCPU no soporta 8GB
+	err := d.Resize(context.Background(), "svc", core.Resources{CPUMilli: 250, MemoryMiB: 8192}, nil)
+	require.ErrorContains(t, err, "invalid cpu/memory combination")
+	// EC2: task def sin recursos de task
+	api2 := newFakeECSWithTaskDef(ecstypes.TaskDefinition{
+		Family:               awssdk.String("legacy"),
+		ContainerDefinitions: []ecstypes.ContainerDefinition{{Image: awssdk.String("repo/x:v1")}},
+	})
+	d2 := newDeployer(api2, "cluster")
+	err = d2.Resize(context.Background(), "svc", core.Resources{CPUMilli: 250, MemoryMiB: 512}, nil)
+	require.ErrorContains(t, err, "EC2 launch type not supported")
+}
+
+func TestListServicesIncludesResources(t *testing.T) {
+	f := &fakeECS{
+		listPages: []*ecs.ListServicesOutput{{ServiceArns: []string{"arn:svc/catalog"}}},
+		describeOut: &ecs.DescribeServicesOutput{Services: []ecstypes.Service{{
+			ServiceName:    awssdk.String("catalog"),
+			RunningCount:   1,
+			DesiredCount:   2,
+			TaskDefinition: awssdk.String("arn:td/catalog:5"),
+		}}},
+		taskDefOut: &ecs.DescribeTaskDefinitionOutput{TaskDefinition: &ecstypes.TaskDefinition{
+			Cpu:    awssdk.String("256"),
+			Memory: awssdk.String("512"),
+			ContainerDefinitions: []ecstypes.ContainerDefinition{{
+				Image: awssdk.String("host/catalog:v1.2.3"),
+			}},
+		}},
+	}
+	d := newDeployer(f, "stg-cluster")
+
+	out, err := d.ListServices(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Equal(t, core.Resources{CPUMilli: 250, MemoryMiB: 512}, out[0].Resources)
+	require.Equal(t, "v1.2.3", out[0].Tag)
 }
