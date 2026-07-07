@@ -1,6 +1,6 @@
 # Paridad CLI ↔ TUI
 
-**Actualizado:** 2026-07-05
+**Actualizado:** 2026-07-07
 
 **Principio de producto:** toda capacidad de steer debe estar soportada en **ambos
 frentes** — CLI (scriptable, CI) y TUI (interactivo) — sobre el mismo core. Un frente
@@ -23,7 +23,7 @@ esté documentado aquí con su plan de cierre.
 | Tags de un repo + desplegado | `image tags -r` (`● now`) | Panel TAGS al seleccionar repo (`● now`) | ✅ |
 | Selección de contexto | `--context` / `STEER_CONTEXT` / `default_context` | Switcher en vivo (`c` / click en top bar) | ✅ (modelos distintos, misma función) |
 | Guard de solo-lectura | `writable=false` bloquea comandos mutantes | Igual: notice y acciones bloqueadas | ✅ |
-| Setup de config | `config init` / `config validate` | — | ✅ aceptado (nota 2) |
+| Setup de config | `config init\|add\|remove\|list\|validate` | — (sin config, apunta al wizard) | ✅ aceptado (nota 2) |
 | **Logs del servicio** | ❌ no existe comando | ❌ pestaña Logs es stub | 🔴 GAP doble (nota 3) |
 | **Events históricos del servicio** | ❌ solo durante `deploy -w` | ❌ pestaña Events vacía fuera de un deploy | 🟡 GAP doble (nota 4) |
 | Bases de datos | ❌ | ❌ sección DATABASES stub | ⏳ hito 04 del roadmap |
@@ -34,10 +34,13 @@ esté documentado aquí con su plan de cierre.
 1. **`image ls` muestra último tag; el sidebar no.** Asimetría menor deliberada: en el
    TUI el detalle (tags, antigüedad, tamaño) vive en el panel al seleccionar el repo;
    duplicarlo en la fila del sidebar lo saturaría. No requiere acción.
-2. **`config init|validate` es CLI-only por diseño.** Es el paso previo a que exista un
-   contexto utilizable: la TUI no puede arrancar sin config válida. El hito **08
-   (onboarding)** convertirá `config init` en wizard; si algún día la TUI arranca sin
-   config, deberá ofrecer ese wizard embebido — decisión para el diseño del hito 08.
+2. **`config init|add|remove|list|validate` es CLI-only por diseño.** Es el paso previo a
+   que exista un contexto utilizable: la TUI no puede arrancar sin config válida. El hito
+   **08 (onboarding)** cerró esto: `config init` ahora es un wizard interactivo (detecta
+   perfiles AWS, valida, smoke test) y, si la TUI arranca sin `steer.toml`, el error
+   apunta explícitamente al wizard (`no steer.toml found — try: steer config init`) en
+   vez de un mensaje genérico. El wizard embebido en la TUI misma (en vez de solo el
+   puntero al comando) queda fuera de alcance — no se identificó necesidad real.
 3. **Logs (GAP doble, el mayor).** La pestaña Logs del panel existe desde el rediseño
    pero es un stub ("no log source configured"), y no hay `steer service logs` en CLI.
    Falta la capacidad completa: interface `core.LogSource` (CloudWatch Logs en AWS) +

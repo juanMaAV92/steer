@@ -118,7 +118,8 @@ just want to ship**.
 
 ```bash
 # 1. Configure (once, by whoever knows the cloud)
-cp steer.example.toml steer.toml   # then fill in your accounts/roles
+steer config init   # interactive setup — detects your AWS profiles
+# (or: cp steer.example.toml steer.toml && edit it by hand; `config init --example` writes the same starter file)
 
 # 2. Open the dashboard
 steer tui
@@ -144,7 +145,7 @@ AWS service, so the same command keeps working when other clouds are added.
 3. ✅ TUI dashboard — mouse-driven, multi-context, live rollouts
 4. ✅ **`image`** (ECR) — repos & tags in TUI and CLI, deploy tag-picker, registry-validated deploys, stuck-rollout detection
 5. ✅ Distribution — Homebrew tap (macOS), 5-platform releases
-6. ⏳ Onboarding wizard — next up
+6. ✅ Onboarding wizard — interactive `config init`, plus `config add/remove/list`
 7. `service logs/events`, `db`, `promote`, `⌘k` palette, minor capabilities
 
 See [`docs/superpowers/plans/2026-06-15-roadmap.md`](docs/superpowers/plans/2026-06-15-roadmap.md).

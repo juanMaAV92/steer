@@ -9,6 +9,7 @@ import (
 	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/providers"
 	"github.com/juanMaAV92/steer/internal/providers/aws"
+	"github.com/juanMaAV92/steer/internal/render"
 	"github.com/spf13/cobra"
 )
 
@@ -39,10 +40,10 @@ var newWizardDetector = func() wizard.Detector { return aws.NewDetector() }
 // cada cloud nuevo añade su aserción en su punto de inyección, no en el wizard.
 var _ wizard.Detector = (*aws.Detector)(nil)
 
-// NewConfigCmd agrupa `steer config init|add|validate`.
+// NewConfigCmd agrupa `steer config init|add|remove|list|validate`.
 func NewConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "config", Short: "Manage steer configuration"}
-	cmd.AddCommand(newConfigInitCmd(), newConfigAddCmd(), newConfigValidateCmd())
+	cmd.AddCommand(newConfigInitCmd(), newConfigAddCmd(), newConfigRemoveCmd(), newConfigListCmd(), newConfigValidateCmd())
 	return cmd
 }
 
@@ -180,6 +181,91 @@ func runWizardAndWrite(cmd *cobra.Command, existing *config.Config) error {
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "✓ connected — %d services in %s. Try: steer tui\n", n, defCtx.Cluster)
 	return nil
+}
+
+// newConfigListCmd construye `config list`: tabla NAME/CLOUD/CLUSTER/MODE/DEFAULT.
+func newConfigListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List the contexts in the discovered steer.toml",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			path, err := config.Find()
+			if err != nil {
+				return err
+			}
+			cfg, err := config.Load(path)
+			if err != nil {
+				return err
+			}
+			headers := []string{"NAME", "CLOUD", "CLUSTER", "MODE", "DEFAULT"}
+			all := cfg.AllContexts()
+			rows := make([][]string, 0, len(all))
+			for _, ctx := range all {
+				mode := "read-only"
+				if ctx.Writable {
+					mode = "writable"
+				}
+				def := ""
+				if ctx.Name == cfg.DefaultContext {
+					def = "default"
+				}
+				rows = append(rows, []string{ctx.Name, ctx.Cloud, ctx.Cluster, mode, def})
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), render.Table(headers, rows))
+			return nil
+		},
+	}
+}
+
+// newConfigRemoveCmd construye `config remove <name>`: confirmación salvo -y,
+// borra el contexto y avisa si eso reasignó (o vació) default_context.
+func newConfigRemoveCmd() *cobra.Command {
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "remove <name>",
+		Short: "Remove a context from the discovered steer.toml",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			path, err := config.Find()
+			if err != nil {
+				return err
+			}
+			cfg, err := config.Load(path)
+			if err != nil {
+				return err
+			}
+			if _, ok := cfg.Contexts[name]; !ok {
+				return fmt.Errorf("context %q not found", name)
+			}
+			out := cmd.OutOrStdout()
+			if !yes {
+				_, _ = fmt.Fprintf(out, "Are you sure? This removes %q from %s [y/N]: ", name, path)
+				if !confirm(cmd.InOrStdin()) {
+					_, _ = fmt.Fprintln(out, "aborted")
+					return nil
+				}
+			}
+			wasDefault, err := cfg.RemoveContext(name)
+			if err != nil {
+				return err
+			}
+			if err := cfg.Write(path); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(out, "removed %q from %s\n", name, path)
+			if wasDefault {
+				if cfg.DefaultContext == "" {
+					_, _ = fmt.Fprintln(out, "no contexts left; default_context is now empty")
+				} else {
+					_, _ = fmt.Fprintf(out, "default_context is now %q\n", cfg.DefaultContext)
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip confirmation")
+	return cmd
 }
 
 func newConfigValidateCmd() *cobra.Command {

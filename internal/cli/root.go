@@ -46,28 +46,38 @@ func NewRootCmd(version string) *cobra.Command {
 			cmd.SetContext(context.WithValue(cmd.Context(), ctxKey{}, &AppContext{Factory: factory}))
 			return nil
 		}
-		path, err := config.Find()
+		app, err := buildAppContext(contextName, factory)
 		if err != nil {
 			return err
 		}
-		cfg, err := config.Load(path)
-		if err != nil {
-			return err
-		}
-		if err := cfg.Validate(); err != nil {
-			return err
-		}
-		if contextName == "" {
-			contextName = os.Getenv("STEER_CONTEXT")
-		}
-		cur, err := cfg.ResolveContext(contextName)
-		if err != nil {
-			return err
-		}
-		app := &AppContext{Ctx: cur, Config: cfg, Factory: factory}
 		cmd.SetContext(context.WithValue(cmd.Context(), ctxKey{}, app))
 		return nil
 	}
 
 	return root
+}
+
+// buildAppContext hace el camino estándar config→contexto→AppContext: se usa
+// desde el hook persistente de la raíz y desde `tui` (que necesita envolver el
+// error de "sin config" con un puntero al wizard antes de que sea genérico).
+func buildAppContext(contextName string, factory providers.ProviderFactory) (*AppContext, error) {
+	path, err := config.Find()
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	if contextName == "" {
+		contextName = os.Getenv("STEER_CONTEXT")
+	}
+	cur, err := cfg.ResolveContext(contextName)
+	if err != nil {
+		return nil, err
+	}
+	return &AppContext{Ctx: cur, Config: cfg, Factory: factory}, nil
 }

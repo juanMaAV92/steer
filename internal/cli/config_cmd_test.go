@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -92,4 +93,52 @@ func TestConfigValidateFailsWithoutContexts(t *testing.T) {
 
 	_, err := runRoot(t, "config", "validate")
 	require.Error(t, err)
+}
+
+// writeTestConfig escribe un steer.toml con dos contextos (dev default, prod read-only).
+func writeTestConfig(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "steer.toml")
+	require.NoError(t, os.WriteFile(path, []byte(`default_context = "dev"
+
+[contexts.dev]
+cloud = "aws"
+profile = "dev"
+cluster = "dev-cluster"
+writable = true
+
+[contexts.prod]
+cloud = "aws"
+profile = "prod"
+cluster = "prod-cluster"
+writable = false
+`), 0o600))
+	return path
+}
+
+func TestConfigListShowsContexts(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	writeTestConfig(t, dir)
+	out, err := runRoot(t, "config", "list")
+	require.NoError(t, err)
+	require.Contains(t, out, "dev")
+	require.Contains(t, out, "prod")
+	require.Contains(t, out, "default") // marca cuál es el default
+	require.Contains(t, out, "read-only")
+}
+
+func TestConfigRemoveDeletesAndReassigns(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	path := writeTestConfig(t, dir)
+	out, err := runRoot(t, "config", "remove", "dev", "-y")
+	require.NoError(t, err)
+	require.Contains(t, out, "removed")
+	require.Contains(t, out, "default_context is now") // avisa la reasignación
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	require.Equal(t, "prod", cfg.DefaultContext)
+	_, err = runRoot(t, "config", "remove", "nope", "-y")
+	require.ErrorContains(t, err, "not found")
 }
