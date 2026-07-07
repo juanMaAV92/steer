@@ -35,26 +35,45 @@ binary** with two faces over one shared core:
   `steer --context stg service deploy -s my-svc -t v1.2.3 -y`.
   First-class for the lead and for pipelines.
 
-## Install
+## Install & update
+
+### macOS — Homebrew (recommended)
 
 ```bash
-# macOS (Homebrew)
+# install
 brew install juanMaAV92/tap/steer
 
-# Any platform with Go installed (including Linux)
+# update
+brew update && brew upgrade steer
+```
+
+No Gatekeeper prompts: the cask clears the quarantine flag on install.
+
+### Linux (and any OS with Go installed)
+
+```bash
+# install AND update — same command, always fetches the latest release
 go install github.com/juanMaAV92/steer/cmd/steer@latest
 ```
 
-**Linux without Go:** download the `steer_*_linux_{amd64,arm64}.tar.gz` from the
-[latest release](https://github.com/juanMaAV92/steer/releases/latest) and place `steer` in your `PATH`.
+Without Go: download `steer_*_linux_{amd64,arm64}.tar.gz` from the
+[latest release](https://github.com/juanMaAV92/steer/releases/latest) and place `steer`
+in your `PATH`. To update, download the new release and replace the binary.
 
-**Windows:** download `steer_*_windows_amd64.zip` from the
+### Windows
+
+Download `steer_*_windows_amd64.zip` from the
 [latest release](https://github.com/juanMaAV92/steer/releases/latest), unzip and add
-`steer.exe` to your `PATH`. Use **Windows Terminal** — the TUI (mouse included) degrades
-in the legacy `cmd.exe` console.
+`steer.exe` to your `PATH`. To update, download the new zip and replace `steer.exe`.
 
-**macOS direct download note:** binaries from the releases page (not brew) are not
-notarized; clear the quarantine flag once: `xattr -d com.apple.quarantine ./steer`.
+Use **Windows Terminal** — the TUI (mouse included) degrades in the legacy `cmd.exe` console.
+
+### Notes
+
+- Check your version anytime with `steer --version`; new versions are announced on the
+  [releases page](https://github.com/juanMaAV92/steer/releases) with an automatic changelog.
+- **macOS direct download** (releases page, not brew): binaries are not notarized; clear
+  the quarantine flag once with `xattr -d com.apple.quarantine ./steer`.
 
 ## Who is it for?
 
