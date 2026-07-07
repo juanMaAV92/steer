@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/juanMaAV92/steer/internal/config"
@@ -28,4 +29,9 @@ func TestIsImplemented(t *testing.T) {
 	require.False(t, IsImplemented("gcp"))
 	require.False(t, IsImplemented("azure"))
 	require.False(t, IsImplemented(""))
+}
+
+func TestFriendlyNilAndPassthrough(t *testing.T) {
+	require.Empty(t, Friendly(nil))                                  // guard: no panic
+	require.Equal(t, "algo raro", Friendly(errors.New("algo raro"))) // sin mapeo: tal cual
 }

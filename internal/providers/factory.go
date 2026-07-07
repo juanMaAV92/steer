@@ -21,6 +21,9 @@ func IsImplemented(cloud string) bool { return cloud == "aws" }
 // Friendly traduce errores comunes del cloud a mensajes que enseñan el remedio;
 // sin mapeo devuelve err.Error() tal cual. Fachada por-provider (AWS hoy).
 func Friendly(err error) string {
+	if err == nil {
+		return "" // guard: la fachada es pública; evita panic si un llamador no chequea
+	}
 	if msg, ok := aws.FriendlyError(err); ok {
 		return msg
 	}
