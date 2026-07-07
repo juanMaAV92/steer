@@ -11,6 +11,10 @@ import (
 
 // AddContext valida y agrega un contexto; el primero se vuelve default_context.
 func (c *Config) AddContext(ctx Context) error {
+	// Validar que el nombre no esté vacío para evitar TOML inválido ([contexts.])
+	if strings.TrimSpace(ctx.Name) == "" {
+		return fmt.Errorf("context needs a name")
+	}
 	if err := ctx.Validate(); err != nil {
 		return err
 	}

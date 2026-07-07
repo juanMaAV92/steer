@@ -81,6 +81,17 @@ func TestWriteRoundTripPreservesEverything(t *testing.T) {
 	require.Equal(t, "us-east-1", lProd.Region)
 }
 
+func TestAddContextRejectsEmptyName(t *testing.T) {
+	c := &Config{Contexts: map[string]Context{}}
+	empty := devCtx("dev")
+	empty.Name = ""
+	require.ErrorContains(t, c.AddContext(empty), "needs a name")
+	blank := devCtx("dev")
+	blank.Name = "   "
+	require.ErrorContains(t, c.AddContext(blank), "needs a name")
+	require.Empty(t, c.Contexts, "nada debe almacenarse bajo clave vacía")
+}
+
 func TestGlobalPath(t *testing.T) {
 	p, err := GlobalPath()
 	require.NoError(t, err)
