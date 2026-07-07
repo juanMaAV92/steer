@@ -153,10 +153,26 @@ See [`docs/superpowers/plans/2026-06-15-roadmap.md`](docs/superpowers/plans/2026
 ## Configuration
 
 Steer reads `steer.toml` from the current repo or `~/.config/steer/steer.toml`.
-See [`steer.example.toml`](steer.example.toml): you declare environments per provider
-(profile, account, role, `writable`) and naming templates that resolve short names to real
-resource names. Your config (accounts, role ARNs) stays private — never commit it to a
-public repo.
+A **context** is one target = cloud + credential + cluster + naming templates + `writable`.
+Several accounts, environments, or projects are just several contexts; switch between them
+with `c` in the TUI or `--context` on the CLI. Your config (accounts, role ARNs) stays
+private — never commit it to a public repo.
+
+The fastest way in is the interactive wizard — it reads your AWS profiles, lists your real
+clusters to pick from, and runs a connection smoke test:
+
+```bash
+steer config init          # interactive setup for the first context
+steer config add           # add another account/environment later
+steer config list          # NAME · CLOUD · CLUSTER · MODE · DEFAULT
+steer config remove <name> # drop a context (reassigns the default if needed)
+steer config validate      # check the discovered steer.toml
+```
+
+Prefer editing by hand? `steer config init --example` writes a starter file (see also
+[`steer.example.toml`](steer.example.toml)) — `steer.toml` is plain TOML: add or tweak a
+context, then `steer config validate`. If a command hits an AWS problem (expired SSO,
+missing credentials, wrong cluster), the error tells you what to run to fix it.
 
 ## License
 
