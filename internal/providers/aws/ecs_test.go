@@ -20,8 +20,9 @@ type fakeECS struct {
 	registerOut *ecs.RegisterTaskDefinitionOutput
 	listTDOut   *ecs.ListTaskDefinitionsOutput
 
-	registerIn *ecs.RegisterTaskDefinitionInput
-	updateIn   *ecs.UpdateServiceInput
+	registerIn  *ecs.RegisterTaskDefinitionInput
+	updateIn    *ecs.UpdateServiceInput
+	clusterArns []string // ARNs devueltos por ListClusters (usado por el Detector)
 
 	// lastRegisterInput/updateServiceCalled: alias de registerIn/updateIn
 	// para los tests de Resize (nombres más explícitos sobre lo que verifican).
@@ -74,6 +75,9 @@ func newFakeECSWithTaskDef(td ecstypes.TaskDefinition) *fakeECS {
 }
 func (f *fakeECS) ListTaskDefinitions(_ context.Context, _ *ecs.ListTaskDefinitionsInput, _ ...func(*ecs.Options)) (*ecs.ListTaskDefinitionsOutput, error) {
 	return f.listTDOut, nil
+}
+func (f *fakeECS) ListClusters(_ context.Context, _ *ecs.ListClustersInput, _ ...func(*ecs.Options)) (*ecs.ListClustersOutput, error) {
+	return &ecs.ListClustersOutput{ClusterArns: f.clusterArns}, nil
 }
 
 func TestListServices(t *testing.T) {
