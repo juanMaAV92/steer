@@ -45,7 +45,8 @@ func NewDetectorWithHome(home string) *Detector {
 // ([X]), deduplicados y en orden alfabético. Sin ~/.aws devuelve lista vacía.
 func (d *Detector) Profiles() ([]string, error) {
 	set := map[string]bool{}
-	parse := func(path, prefix string) error {
+	// extractName decide qué encabezado "[...]" cuenta como perfil dentro de un archivo dado.
+	parse := func(path string, extractName func(header string) (string, bool)) error {
 		f, err := os.Open(path)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -60,18 +61,33 @@ func (d *Detector) Profiles() ([]string, error) {
 			if !strings.HasPrefix(line, "[") || !strings.HasSuffix(line, "]") {
 				continue
 			}
-			name := strings.TrimSpace(strings.Trim(line, "[]"))
-			name = strings.TrimSpace(strings.TrimPrefix(name, prefix))
-			if name != "" {
+			header := strings.TrimSpace(strings.Trim(line, "[]"))
+			if name, ok := extractName(header); ok && name != "" {
 				set[name] = true
 			}
 		}
 		return sc.Err()
 	}
-	if err := parse(filepath.Join(d.home, ".aws", "config"), "profile "); err != nil {
+	// ~/.aws/config declara perfiles como "[default]" o "[profile X]", pero también
+	// puede tener secciones que NO son perfiles (p.ej. "[sso-session corp]" de IAM
+	// Identity Center o "[services X]"). Solo aceptamos los dos primeros patrones.
+	configName := func(header string) (string, bool) {
+		if header == "default" {
+			return "default", true
+		}
+		if rest, ok := strings.CutPrefix(header, "profile "); ok {
+			return strings.TrimSpace(rest), true
+		}
+		return "", false
+	}
+	// ~/.aws/credentials no tiene esas secciones especiales: cualquier "[X]" es un perfil.
+	credentialsName := func(header string) (string, bool) {
+		return header, true
+	}
+	if err := parse(filepath.Join(d.home, ".aws", "config"), configName); err != nil {
 		return nil, err
 	}
-	if err := parse(filepath.Join(d.home, ".aws", "credentials"), ""); err != nil {
+	if err := parse(filepath.Join(d.home, ".aws", "credentials"), credentialsName); err != nil {
 		return nil, err
 	}
 	out := make([]string, 0, len(set))

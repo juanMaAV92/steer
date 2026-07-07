@@ -21,6 +21,13 @@ sso_session = corp
 
 [profile staging]
 region = us-west-2
+
+[sso-session corp]
+sso_region = us-east-1
+
+[services myservices]
+ecs =
+  endpoint_url = https://example.com
 `), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "credentials"), []byte(`[legacy]
 aws_access_key_id = AKIA...
@@ -36,6 +43,16 @@ func TestDetectorProfilesParsesAndDedups(t *testing.T) {
 	profiles, err := d.Profiles()
 	require.NoError(t, err)
 	// default + dev + staging (config) + legacy (credentials); dev deduplicado; orden alfabético
+	require.Equal(t, []string{"default", "dev", "legacy", "staging"}, profiles)
+}
+
+func TestDetectorProfilesIgnoresNonProfileConfigSections(t *testing.T) {
+	d := NewDetectorWithHome(writeAWSFixtures(t))
+	profiles, err := d.Profiles()
+	require.NoError(t, err)
+	// [sso-session corp] y [services myservices] no son perfiles: no deben aparecer.
+	require.NotContains(t, profiles, "sso-session corp")
+	require.NotContains(t, profiles, "services myservices")
 	require.Equal(t, []string{"default", "dev", "legacy", "staging"}, profiles)
 }
 
