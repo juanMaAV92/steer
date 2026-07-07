@@ -44,26 +44,34 @@ func runRootCtx(t *testing.T, ctx context.Context, args ...string) (string, erro
 	return out.String(), err
 }
 
-func TestConfigInitCreatesFile(t *testing.T) {
-	dir := t.TempDir()
-	t.Chdir(dir) // Go 1.24+: cambia el cwd al tempdir
-
-	_, err := runRoot(t, "config", "init")
-	require.NoError(t, err)
-	require.FileExists(t, filepath.Join(dir, "steer.toml"))
-}
-
-func TestConfigInitContainsContexts(t *testing.T) {
+// TestConfigInitExampleKeepsLegacyBehavior cubre `config init --example`: el
+// dump estático histórico, sin tocar el wizard interactivo (no testeable aquí).
+func TestConfigInitExampleKeepsLegacyBehavior(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	_, err := runRoot(t, "config", "init")
+	out, err := runRootCtx(t, context.Background(), "config", "init", "--example")
 	require.NoError(t, err)
+	require.Contains(t, out, "created steer.toml")
 
-	content, err := os.ReadFile(filepath.Join(dir, "steer.toml"))
+	raw, err := os.ReadFile(filepath.Join(dir, "steer.toml"))
 	require.NoError(t, err)
-	require.Contains(t, string(content), "[contexts.")
-	require.Contains(t, string(content), "default_context")
+	require.Contains(t, string(raw), "[contexts.dev]")
+
+	// segunda vez falla como siempre (no sobreescribe).
+	_, err = runRootCtx(t, context.Background(), "config", "init", "--example")
+	require.ErrorContains(t, err, "already exists")
+}
+
+// TestConfigAddWithoutConfigTeaches cubre el camino no interactivo de `config
+// add`: sin steer.toml (ni local ni global) debe enseñar el remedio en vez de
+// arrancar el wizard.
+func TestConfigAddWithoutConfigTeaches(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("HOME", t.TempDir()) // sin global tampoco
+
+	_, err := runRootCtx(t, context.Background(), "config", "add")
+	require.ErrorContains(t, err, "steer config init")
 }
 
 func TestConfigValidateOK(t *testing.T) {

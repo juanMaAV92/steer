@@ -10,7 +10,6 @@ import (
 
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
-	"github.com/juanMaAV92/steer/internal/cli/wizard"
 	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/core"
 )
@@ -141,5 +140,3 @@ func (d *Detector) SmokeTest(ctx context.Context, c config.Context) (int, error)
 	}
 	return len(svcs), nil
 }
-
-var _ wizard.Detector = (*Detector)(nil)
