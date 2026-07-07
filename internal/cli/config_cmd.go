@@ -34,6 +34,11 @@ writable         = false
 // agnóstico de cloud vía wizard.Detector.
 var newWizardDetector = func() wizard.Detector { return aws.NewDetector() }
 
+// aws.Detector debe satisfacer wizard.Detector. La aserción vive aquí (no en el
+// paquete wizard) para que el flujo agnóstico no importe ningún provider concreto:
+// cada cloud nuevo añade su aserción en su punto de inyección, no en el wizard.
+var _ wizard.Detector = (*aws.Detector)(nil)
+
 // NewConfigCmd agrupa `steer config init|add|validate`.
 func NewConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "config", Short: "Manage steer configuration"}

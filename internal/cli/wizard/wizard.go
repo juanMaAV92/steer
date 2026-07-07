@@ -8,13 +8,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/juanMaAV92/steer/internal/config"
 	"github.com/juanMaAV92/steer/internal/providers"
-	"github.com/juanMaAV92/steer/internal/providers/aws"
 )
-
-// aws.Detector debe satisfacer wizard.Detector: única fuente de verdad de la
-// interfaz (antes vivía al revés, en aws — eso generaba un ciclo de imports
-// con este paquete, que necesita providers.IsImplemented/Friendly).
-var _ Detector = (*aws.Detector)(nil)
 
 // cloudOption es un cloud ofrecido en el picker inicial ("aws" hoy es el único
 // implementado; gcp/azure aparecen deshabilitados hasta que tengan provider).
