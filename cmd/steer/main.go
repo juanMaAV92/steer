@@ -30,7 +30,7 @@ func main() {
 		if errors.Is(err, context.Canceled) {
 			os.Exit(130)
 		}
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(os.Stderr, "error:", cli.FriendlyError(err))
 		os.Exit(1)
 	}
 }

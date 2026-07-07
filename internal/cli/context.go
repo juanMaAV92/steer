@@ -20,6 +20,10 @@ type AppContext struct {
 	provider providers.Provider // memoizado por comando
 }
 
+// FriendlyError traduce un error de provider a un mensaje que enseña el remedio;
+// punto único que usa main para no importar providers directamente.
+func FriendlyError(err error) string { return providers.Friendly(err) }
+
 // IsProduction indica si el contexto activo es de solo lectura (prod).
 func (a *AppContext) IsProduction() bool { return !a.Ctx.Writable }
 

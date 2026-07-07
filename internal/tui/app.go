@@ -932,7 +932,7 @@ func (m *Model) openActionKind(kind actionKind) tea.Cmd {
 
 func (m Model) View() string {
 	if m.err != nil {
-		return render.Danger("error: "+m.err.Error()) + "\n" + render.Dim("press q to quit")
+		return render.Danger("error: "+providers.Friendly(m.err)) + "\n" + render.Dim("press q to quit")
 	}
 	top := topBar(m.width, m.current.Cloud, m.current.Name, m.current.Cluster, m.current.Writable)
 	rule := hrule(m.width)

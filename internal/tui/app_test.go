@@ -1241,3 +1241,11 @@ func TestDeployNotFoundThenRetryOK(t *testing.T) {
 	require.True(t, m.deploy.Active)
 	require.Equal(t, []string{"api/bad", "api/v9.9"}, reg.HasTagCalls)
 }
+
+// TestErrorScreenTeaches: el error de SSO vencido se muestra con su remedio.
+func TestErrorScreenTeaches(t *testing.T) {
+	m := newTestModel(sampleServices())
+	m.err = errors.New("failed to refresh cached credentials, the SSO session has expired")
+	out := stripANSI(m.View())
+	require.Contains(t, out, "aws sso login")
+}

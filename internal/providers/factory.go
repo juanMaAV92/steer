@@ -18,6 +18,15 @@ var ErrProviderNotImplemented = errors.New("provider not implemented")
 // y la UI (marca "(no impl.)") deben coincidir siempre.
 func IsImplemented(cloud string) bool { return cloud == "aws" }
 
+// Friendly traduce errores comunes del cloud a mensajes que enseñan el remedio;
+// sin mapeo devuelve err.Error() tal cual. Fachada por-provider (AWS hoy).
+func Friendly(err error) string {
+	if msg, ok := aws.FriendlyError(err); ok {
+		return msg
+	}
+	return err.Error()
+}
+
 // Provider agrupa las capacidades de un contexto; cachea la sesión del cloud.
 type Provider interface {
 	Deployer() (core.Deployer, error)
