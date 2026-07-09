@@ -112,6 +112,33 @@ type Registry interface {
 	HasTag(ctx context.Context, repo, tag string) (bool, error)
 }
 
+// ErrNoLogSource indica que el servicio no expone logs legibles por steer
+// (driver de logs no soportado o sin logConfiguration). No es un fallo del cloud.
+var ErrNoLogSource = errors.New("no log source for this service")
+
+// LogLine es una línea de log de un servicio.
+type LogLine struct {
+	At        time.Time
+	Container string // vacío si la task tiene un solo contenedor
+	Message   string
+}
+
+// LogPage es un lote de líneas + cursor opaco para continuar leyendo.
+type LogPage struct {
+	Lines  []LogLine // orden cronológico ascendente
+	Cursor string
+}
+
+// LogSource lee logs de un servicio (CloudWatch Logs / Cloud Logging / Log
+// Analytics). El cursor es opaco: lo define cada provider; el contrato solo
+// exige que FollowLogs(cursor) no repita ni pierda líneas.
+type LogSource interface {
+	// TailLogs devuelve las últimas `limit` líneas del servicio.
+	TailLogs(ctx context.Context, service string, limit int) (LogPage, error)
+	// FollowLogs devuelve las líneas posteriores al cursor.
+	FollowLogs(ctx context.Context, service string, cursor string) (LogPage, error)
+}
+
 // IsProvisioningFailure detecta eventos de fallo de aprovisionamiento en el texto
 // que reporta el provider. Heurística documentada por provider (ECS hoy): un
 // rollout que acumula estos eventos está atascado reintentando (p. ej. un tag
