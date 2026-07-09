@@ -22,7 +22,7 @@ func NewServiceCmd() *cobra.Command {
 		Aliases: []string{"svc"},
 		Short:   "Manage compute services (deploy, scale, status...)",
 	}
-	cmd.AddCommand(newServiceStatusCmd(), newServiceDeployCmd(), newServiceScaleCmd(), newServiceRollbackCmd(), newServiceResizeCmd(), newServiceLogsCmd())
+	cmd.AddCommand(newServiceStatusCmd(), newServiceDeployCmd(), newServiceScaleCmd(), newServiceRollbackCmd(), newServiceResizeCmd(), newServiceLogsCmd(), newServiceEventsCmd())
 	return cmd
 }
 
