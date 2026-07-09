@@ -72,3 +72,15 @@ type tagValidatedMsg struct {
 }
 
 const refreshInterval = 15 * time.Second
+
+// logsPageMsg trae una página de logs (tail inicial o follow). gen ata la
+// respuesta a la sesión de follow que la pidió: si no coincide, se descarta.
+type logsPageMsg struct {
+	gen     int
+	initial bool
+	page    core.LogPage
+	err     error
+}
+
+// logsTickMsg dispara el siguiente poll del follow de la sesión gen.
+type logsTickMsg struct{ gen int }

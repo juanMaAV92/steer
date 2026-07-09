@@ -8,11 +8,6 @@ import (
 	"github.com/juanMaAV92/steer/internal/render"
 )
 
-// LogsView es un stub: la fuente de logs (LogSource) aún no se consume aquí.
-func LogsView() string {
-	return render.Dim("Logs not available yet — no log source configured.")
-}
-
 // Logs es la pestaña de logs del servicio: viewport scrolleable alimentado por
 // tail + follow (espejo estructural de Events).
 type Logs struct {

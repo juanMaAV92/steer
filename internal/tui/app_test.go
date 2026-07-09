@@ -38,8 +38,6 @@ func fakeFactoryWithRegistry(dep core.Deployer, reg core.Registry) providers.Pro
 
 // fakeFactoryWithLogs adapta un core.Deployer y un core.LogSource fake a una
 // ProviderFactory (para tests de la pestaña Logs).
-//
-//nolint:unused // se consume en la task de la pestaña Logs (T7)
 func fakeFactoryWithLogs(dep core.Deployer, src core.LogSource) providers.ProviderFactory {
 	return func(context.Context, config.Context) (providers.Provider, error) {
 		return fakeProvider{dep: dep, logs: src}, nil
@@ -119,6 +117,81 @@ func servicesNamed(names ...string) []core.ServiceStatus {
 		out[i] = core.ServiceStatus{Name: n, Running: 1, Desired: 1}
 	}
 	return out
+}
+
+// newTestModelWithLogs es como newTestModel pero con un LogSource fake.
+func newTestModelWithLogs(services []core.ServiceStatus, src core.LogSource) Model {
+	fake := &coretest.FakeDeployer{Services: services}
+	factory := fakeFactoryWithLogs(fake, src)
+	cur := config.Context{Name: "stg", Cloud: "aws", Cluster: "stg-cluster", Writable: true}
+	m := New(context.Background(), factory, []config.Context{cur}, cur)
+	m.sidebar.setServices(services)
+	m, _ = applySize(m, 120, 40)
+	return m
+}
+
+func TestLogsTabCargaYSigue(t *testing.T) {
+	t0 := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+	src := &coretest.FakeLogSource{Pages: []core.LogPage{
+		{Lines: []core.LogLine{{At: t0, Message: "hello"}}, Cursor: "c1"},
+		{Lines: []core.LogLine{{At: t0.Add(time.Second), Message: "world"}}, Cursor: "c2"},
+	}}
+	m := newTestModelWithLogs(servicesNamed("api"), src)
+	m.tabs.Set(panel.TabLogs)
+
+	cmd := m.syncLogs()
+	require.NotNil(t, cmd)
+	require.Contains(t, stripANSI(m.View()), "loading logs")
+
+	mm, _ := m.Update(cmd()) // logsPageMsg inicial
+	m = mm.(Model)
+	require.Contains(t, stripANSI(m.View()), "hello")
+
+	// tick de follow → segunda página
+	mm, followCmd := m.Update(logsTickMsg{gen: m.logsGen})
+	m = mm.(Model)
+	require.NotNil(t, followCmd)
+	mm, _ = m.Update(followCmd())
+	m = mm.(Model)
+	require.Contains(t, stripANSI(m.View()), "world")
+	require.Equal(t, "c2", m.logsCursor)
+}
+
+func TestLogsTabSinLogSourceMuestraHint(t *testing.T) {
+	m := newTestModel(servicesNamed("api")) // provider sin logs → ErrNoLogSource
+	m.tabs.Set(panel.TabLogs)
+	cmd := m.syncLogs()
+	mm, _ := m.Update(cmd())
+	m = mm.(Model)
+	require.Contains(t, stripANSI(m.View()), "no log source")
+}
+
+func TestLogsSeReseteanAlCambiarDeServicio(t *testing.T) {
+	src := &coretest.FakeLogSource{Pages: []core.LogPage{
+		{Lines: []core.LogLine{{At: time.Now(), Message: "hello"}}, Cursor: "c1"},
+	}}
+	m := newTestModelWithLogs(servicesNamed("api", "web"), src)
+	m.tabs.Set(panel.TabLogs)
+	cmd := m.syncLogs()
+	mm, _ := m.Update(cmd())
+	m = mm.(Model)
+	gen := m.logsGen
+
+	m.sidebar.moveDown() // selección → web
+	cmd = m.syncLogs()
+	require.NotNil(t, cmd)
+	require.Greater(t, m.logsGen, gen) // generación nueva: lo viejo se descarta
+	require.Contains(t, stripANSI(m.View()), "loading logs")
+}
+
+func TestLogsTickObsoletoNoDisparaFollow(t *testing.T) {
+	src := &coretest.FakeLogSource{}
+	m := newTestModelWithLogs(servicesNamed("api"), src)
+	m.tabs.Set(panel.TabLogs)
+	_ = m.syncLogs()
+
+	_, cmd := m.Update(logsTickMsg{gen: m.logsGen - 1}) // tick de una sesión anterior
+	require.Nil(t, cmd)
 }
 
 func applySize(m Model, w, h int) (Model, tea.Cmd) {

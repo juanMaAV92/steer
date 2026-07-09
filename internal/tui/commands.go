@@ -16,6 +16,10 @@ func deployTickCmd() tea.Cmd {
 	return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return deployPollTickMsg{} })
 }
 
+func logsTickCmd(gen int) tea.Cmd {
+	return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return logsTickMsg{gen: gen} })
+}
+
 func startDeployCmd(ctx context.Context, dep core.Deployer, service, tag string) tea.Cmd {
 	return func() tea.Msg {
 		baseline := ""

@@ -34,6 +34,9 @@ const (
 	borderTop    = 1 // fila de la regla horizontal
 )
 
+// tuiLogLines es el tail inicial de la pestaña Logs (mismo default que la CLI).
+const tuiLogLines = 100
+
 type actionKind int
 
 const (
@@ -86,6 +89,13 @@ type Model struct {
 	tags        []core.ImageTag
 	tagsLoading bool
 	tagsErr     string
+
+	logs        panel.Logs
+	logsService string // servicio cuyo tail/follow está en pantalla ("" = inactivo)
+	logsCursor  string
+	logsLoading bool
+	logsErr     error
+	logsGen     int // generación del follow: invalida páginas/ticks obsoletos
 }
 
 func New(ctx context.Context, factory providers.ProviderFactory, contexts []config.Context, current config.Context) Model {
@@ -97,7 +107,7 @@ func New(ctx context.Context, factory providers.ProviderFactory, contexts []conf
 	m := Model{
 		runCtx: ctx, factory: factory, provider: provider, contexts: contexts, current: current,
 		dep: dep, depErr: err,
-		keys: defaultKeys(), sidebar: newSidebar(), events: panel.NewEvents(),
+		keys: defaultKeys(), sidebar: newSidebar(), events: panel.NewEvents(), logs: panel.NewLogs(),
 		loading: err == nil,
 	}
 	m.sidebar.prefix = current.Prefix()
@@ -219,6 +229,67 @@ func (m *Model) syncRepoTags() tea.Cmd {
 	return m.loadTagsCmd(repo)
 }
 
+// tailLogsCmd pide el tail inicial de logs del servicio para la sesión gen.
+func (m Model) tailLogsCmd(service string, gen int) tea.Cmd {
+	provider := m.provider
+	ctx := m.runCtx
+	return func() tea.Msg {
+		src, err := provider.Logs()
+		if err != nil {
+			return logsPageMsg{gen: gen, initial: true, err: err}
+		}
+		page, err := src.TailLogs(ctx, service, tuiLogLines)
+		return logsPageMsg{gen: gen, initial: true, page: page, err: err}
+	}
+}
+
+// followLogsCmd pide las líneas posteriores al cursor para la sesión gen.
+func (m Model) followLogsCmd(service, cursor string, gen int) tea.Cmd {
+	provider := m.provider
+	ctx := m.runCtx
+	return func() tea.Msg {
+		src, err := provider.Logs()
+		if err != nil {
+			return logsPageMsg{gen: gen, err: err}
+		}
+		page, err := src.FollowLogs(ctx, service, cursor)
+		return logsPageMsg{gen: gen, page: page, err: err}
+	}
+}
+
+// syncLogs arranca/detiene el tail+follow según pestaña y selección. Cambiar
+// de servicio, pestaña o contexto resetea el contenido y sube la generación
+// (las respuestas y ticks de la sesión anterior se descartan al llegar).
+func (m *Model) syncLogs() tea.Cmd {
+	sel := ""
+	if m.tabs.Active == panel.TabLogs && m.sidebar.lastSelected != sectionImages {
+		if s, ok := m.sidebar.selected(); ok {
+			sel = s.Name
+		}
+	}
+	if sel == m.logsService {
+		return nil
+	}
+	m.logsGen++
+	m.logs.Reset()
+	m.logsService, m.logsCursor, m.logsErr = sel, "", nil
+	if sel == "" {
+		m.logsLoading = false
+		return nil
+	}
+	m.logsLoading = true
+	return m.tailLogsCmd(sel, m.logsGen)
+}
+
+// logLineView formatea una línea de log para la pestaña Logs.
+func logLineView(l core.LogLine) string {
+	line := render.Dim(l.At.Format("15:04:05")) + "  "
+	if l.Container != "" {
+		line += render.Accent("["+l.Container+"]") + "  "
+	}
+	return line + l.Message
+}
+
 // layout reparte el espacio: [top bar][regla][cuerpo bodyH][regla][help].
 // Si el ancho < singleColumnThreshold, colapsa a una sola columna apilada.
 func (m *Model) layout() {
@@ -236,6 +307,7 @@ func (m *Model) layout() {
 		m.sidebar.width = m.sidebarW - 1 // PaddingLeft(1) del bloque
 		m.sidebar.height = m.bodyH / 2
 		m.events.SetSize(m.panelW-2, m.bodyH/2-2)
+		m.logs.SetSize(m.panelW-2, m.bodyH/2-2)
 		return
 	}
 	m.sidebarW = m.width * 30 / 100
@@ -249,6 +321,7 @@ func (m *Model) layout() {
 	m.sidebar.width = m.sidebarW - 1
 	m.sidebar.height = m.bodyH
 	m.events.SetSize(m.panelW-2, m.bodyH-2) // - pestañas - línea en blanco
+	m.logs.SetSize(m.panelW-2, m.bodyH-2)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -306,6 +379,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.tags = msg.tags
 		return m, nil
+
+	case logsPageMsg:
+		if msg.gen != m.logsGen {
+			return m, nil // respuesta de una sesión de follow abandonada
+		}
+		m.logsLoading = false
+		if msg.err != nil {
+			m.logsErr = msg.err
+			return m, nil
+		}
+		m.logsCursor = msg.page.Cursor
+		lines := make([]string, 0, len(msg.page.Lines))
+		for _, l := range msg.page.Lines {
+			lines = append(lines, logLineView(l))
+		}
+		if msg.initial {
+			m.logs.SetLines(lines)
+		} else if len(lines) > 0 {
+			m.logs.AppendLines(lines)
+		}
+		return m, logsTickCmd(m.logsGen)
+
+	case logsTickMsg:
+		if msg.gen != m.logsGen || m.logsService == "" || m.logsErr != nil {
+			return m, nil // la sesión murió: el loop se corta aquí
+		}
+		return m, m.followLogsCmd(m.logsService, m.logsCursor, m.logsGen)
 
 	case formTagsMsg:
 		if m.form != nil && m.form.kind == actionDeploy && m.form.service == msg.service {
@@ -578,6 +678,9 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 			m.sidebar.scrollBy(delta)
 			return nil
 		}
+		if m.tabs.Active == panel.TabLogs {
+			return m.logs.Update(msg)
+		}
 		return m.events.Update(msg)
 	}
 	// solo procesar clicks izquierdos
@@ -606,7 +709,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 				m.sidebar.selectEntry(e)
 			}
 			m.focus = focusSidebar
-			return m.syncRepoTags()
+			return tea.Batch(m.syncRepoTags(), m.syncLogs())
 		}
 		return nil
 	}
@@ -636,7 +739,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		}
 	}
 	m.focus = focusPanel
-	return nil
+	return m.syncLogs()
 }
 
 // handleFilterKey edita el filtro del sidebar en vivo (captura el teclado).
@@ -692,6 +795,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.focus == focusPanel {
 		switch {
 		case key.Matches(msg, m.keys.Down), key.Matches(msg, m.keys.Up):
+			if m.tabs.Active == panel.TabLogs {
+				cmd := m.logs.Update(msg)
+				return m, cmd
+			}
 			// m.events es receptor-valor, pero la copia mutada se preserva porque se retorna via `return m, cmd`.
 			cmd := m.events.Update(msg)
 			return m, cmd
@@ -703,7 +810,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Left):
 			m.tabs.Prev()
 		}
-		return m, nil
+		return m, m.syncLogs()
 	}
 
 	// foco en sidebar
@@ -717,7 +824,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebar.toggle(e.Section)
 		}
 	}
-	return m, m.syncRepoTags()
+	return m, tea.Batch(m.syncRepoTags(), m.syncLogs())
 }
 
 // applyContextSwitch conmuta al contexto recibido en sel; si el provider falla, muestra un notice.
@@ -762,6 +869,9 @@ func (m Model) applyContextSwitch(sel config.Context) (tea.Model, tea.Cmd) {
 	m.events.Reset()
 	m.tabs.Active = panel.TabDetails
 	m.tagsRepo, m.tags, m.tagsErr, m.tagsLoading = "", nil, "", false
+	m.logs.Reset()
+	m.logsService, m.logsCursor, m.logsErr, m.logsLoading = "", "", nil, false
+	m.logsGen++
 	return m, tea.Batch(m.loadServicesCmd(), m.loadReposCmd())
 }
 
@@ -1001,7 +1111,17 @@ func (m Model) panelBody() string {
 	case panel.TabEvents:
 		return m.events.View()
 	case panel.TabLogs:
-		return panel.LogsView()
+		switch {
+		case m.logsLoading:
+			return render.Dim("loading logs…")
+		case m.logsErr != nil:
+			if errors.Is(m.logsErr, core.ErrNoLogSource) {
+				return render.Dim(m.logsErr.Error())
+			}
+			return render.Danger("logs error: " + providers.Friendly(m.logsErr))
+		default:
+			return m.logs.View()
+		}
 	default:
 		displayName := strings.TrimPrefix(s.Name, m.current.Prefix())
 		body := panel.DetailsView(s, m.current.Writable, displayName)
