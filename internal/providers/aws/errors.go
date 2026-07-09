@@ -26,7 +26,7 @@ var friendlyRules = []friendlyRule{
 		"no AWS credentials found — try: aws configure, or aws sso login if your team uses SSO"},
 	{func(_ error, l string) bool {
 		return strings.Contains(l, "accessdenied") || strings.Contains(l, "not authorized to perform")
-	}, "access denied — try: ask whoever manages AWS to grant your role ECS/ECR read permissions"},
+	}, "access denied — try: ask whoever manages AWS to grant your role ECS/ECR/CloudWatch Logs read permissions"},
 	{func(err error, _ string) bool {
 		var cnf *ecstypes.ClusterNotFoundException
 		return errors.As(err, &cnf)
