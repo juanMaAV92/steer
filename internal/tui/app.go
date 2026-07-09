@@ -264,6 +264,8 @@ func (m Model) followLogsCmd(service, cursor string, gen int) tea.Cmd {
 // syncLogs arranca/detiene el tail+follow según pestaña y selección. Cambiar
 // de servicio, pestaña o contexto resetea el contenido y sube la generación
 // (las respuestas y ticks de la sesión anterior se descartan al llegar).
+// INVARIANTE: debe llamarse tras CUALQUIER mutación de la pestaña activa o de
+// la selección del sidebar (teclado, mouse, o cambios programáticos).
 func (m *Model) syncLogs() tea.Cmd {
 	sel := ""
 	if m.tabs.Active == panel.TabLogs && m.sidebar.lastSelected != sectionImages {
@@ -316,6 +318,8 @@ func (m Model) loadServiceEventsCmd(service string) tea.Cmd {
 // syncEvents dispara la carga del histórico si la pestaña Events está visible
 // para un servicio distinto del cargado. El feed de deploy tiene prioridad:
 // activo, o terminado con su servicio aún seleccionado, no se toca.
+// INVARIANTE: debe llamarse tras CUALQUIER mutación de la pestaña activa o de
+// la selección del sidebar (teclado, mouse, o cambios programáticos).
 func (m *Model) syncEvents() tea.Cmd {
 	if m.tabs.Active != panel.TabEvents || m.sidebar.lastSelected == sectionImages {
 		return nil
@@ -392,7 +396,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.sidebar.setServices(msg.services)
-		return m, nil
+		// setServices puede mover la selección (fallback al primer servicio si
+		// el elegido desapareció): resincronizar logs/events tras el cambio.
+		return m, tea.Batch(m.syncEvents(), m.syncLogs())
 
 	case reposMsg:
 		switch {
@@ -647,10 +653,13 @@ func (m *Model) applyActionConfirmed(r actionConfirmedMsg) tea.Cmd {
 		m.events.Reset()
 		m.eventsService, m.eventsLastID, m.eventsErr = "", "", ""
 		m.deploy = deployState{Active: true, Service: r.service}
+		// la pestaña ya cambió a Events: cortar cualquier follow de logs en curso
+		// (syncEvents es inofensivo aquí — no-opea mientras deploy.Active).
+		logsCmd, eventsCmd := m.syncLogs(), m.syncEvents()
 		if r.kind == actionResize {
-			return startResizeCmd(m.runCtx, m.dep, r.service, r.resources)
+			return tea.Batch(logsCmd, eventsCmd, startResizeCmd(m.runCtx, m.dep, r.service, r.resources))
 		}
-		return startDeployCmd(m.runCtx, m.dep, r.service, r.input)
+		return tea.Batch(logsCmd, eventsCmd, startDeployCmd(m.runCtx, m.dep, r.service, r.input))
 	}
 	return m.runActionCmd(r.kind, r.service, r.input)
 }
@@ -832,7 +841,8 @@ func (m Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyRunes:
 		m.sidebar.setFilter(m.sidebar.filterQuery + string(msg.Runes))
 	}
-	return m, nil
+	// setFilter puede saltar la selección al primer visible: resincronizar.
+	return m, tea.Batch(m.syncRepoTags(), m.syncEvents(), m.syncLogs())
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -982,10 +992,12 @@ func (m Model) openAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.sidebar.lastSelected = sectionServices
 	m.focus = focusPanel
 	m.notice = ""
+	// el form se abre sobre Details: resincronizar logs/events tras el cambio de pestaña.
+	logsCmd, eventsCmd := m.syncLogs(), m.syncEvents()
 	if key.Matches(msg, m.keys.Deploy) {
-		return m, m.loadFormTagsCmd(s.Name)
+		return m, tea.Batch(logsCmd, eventsCmd, m.loadFormTagsCmd(s.Name))
 	}
-	return m, nil
+	return m, tea.Batch(logsCmd, eventsCmd)
 }
 
 func (m *Model) runActionCmd(kind actionKind, service, input string) tea.Cmd {
@@ -1111,10 +1123,12 @@ func (m *Model) openActionKind(kind actionKind) tea.Cmd {
 	m.sidebar.lastSelected = sectionServices
 	m.focus = focusPanel
 	m.notice = ""
+	// el form se abre sobre Details: resincronizar logs/events tras el cambio de pestaña.
+	logsCmd, eventsCmd := m.syncLogs(), m.syncEvents()
 	if kind == actionDeploy {
-		return m.loadFormTagsCmd(s.Name)
+		return tea.Batch(logsCmd, eventsCmd, m.loadFormTagsCmd(s.Name))
 	}
-	return nil
+	return tea.Batch(logsCmd, eventsCmd)
 }
 
 func (m Model) View() string {

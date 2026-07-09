@@ -194,6 +194,60 @@ func TestLogsTickObsoletoNoDisparaFollow(t *testing.T) {
 	require.Nil(t, cmd)
 }
 
+// TestApplyActionConfirmedDeployDetieneFollowDeLogs verifica que confirmar un
+// deploy (que mueve tabs.Active a Events) también corta el follow de logs en
+// curso: sin esto, FollowLogs seguiría sondeando cada 3s durante todo el rollout.
+func TestApplyActionConfirmedDeployDetieneFollowDeLogs(t *testing.T) {
+	src := &coretest.FakeLogSource{Pages: []core.LogPage{
+		{Lines: []core.LogLine{{At: time.Now(), Message: "hello"}}, Cursor: "c1"},
+	}}
+	m := newTestModelWithLogs(servicesNamed("api"), src)
+	m.tabs.Set(panel.TabLogs)
+	cmd := m.syncLogs()
+	mm, _ := m.Update(cmd()) // logsPageMsg inicial: entra en modo follow
+	m = mm.(Model)
+	oldGen := m.logsGen
+	require.Equal(t, "api", m.logsService)
+
+	deployCmd := m.applyActionConfirmed(actionConfirmedMsg{kind: actionDeploy, service: "api", input: "v2"})
+	require.NotNil(t, deployCmd)
+	require.Equal(t, panel.TabEvents, m.tabs.Active)
+	require.Empty(t, m.logsService, "el follow debe apagarse: la pestaña ya no es Logs")
+	require.Greater(t, m.logsGen, oldGen)
+
+	// un tick de la sesión vieja no debe disparar más follow contra el fake
+	_, tickCmd := m.Update(logsTickMsg{gen: oldGen})
+	require.Nil(t, tickCmd)
+	require.Empty(t, src.FollowCalls)
+}
+
+// TestFilterJumpDetieneFollowDeLogs verifica que el salto de selección al
+// filtrar (setFilter mueve el cursor al primer visible) también resincroniza
+// logs: sin esto, m.logsService queda apuntando al servicio anterior.
+func TestFilterJumpDetieneFollowDeLogs(t *testing.T) {
+	src := &coretest.FakeLogSource{Pages: []core.LogPage{
+		{Lines: []core.LogLine{{At: time.Now(), Message: "hello"}}, Cursor: "c1"},
+	}}
+	m := newTestModelWithLogs(servicesNamed("api", "web"), src)
+	m.tabs.Set(panel.TabLogs)
+	cmd := m.syncLogs()
+	mm, _ := m.Update(cmd())
+	m = mm.(Model)
+	require.Equal(t, "api", m.logsService)
+	gen := m.logsGen
+
+	m = mustUpdate(t, m, keyMsg("/")) // activa el filtro
+	updated, filterCmd := m.Update(keyMsg("w"))
+	m = updated.(Model)
+	require.Equal(t, "web", func() string {
+		s, _ := m.sidebar.selected()
+		return s.Name
+	}(), "la selección debe saltar al único visible tras filtrar 'w'")
+	require.NotNil(t, filterCmd)
+	require.Equal(t, "web", m.logsService)
+	require.Greater(t, m.logsGen, gen)
+}
+
 func applySize(m Model, w, h int) (Model, tea.Cmd) {
 	updated, cmd := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	return updated.(Model), cmd
