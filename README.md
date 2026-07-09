@@ -130,6 +130,8 @@ steer --context stg service deploy -s my-svc -t v1.2.3 --watch
 steer service scale -s my-svc --count 3
 steer service resize -s my-svc --cpu 0.5 --memory 2GB
 steer service rollback -s my-svc
+steer service logs -s my-svc -f
+steer service events -s my-svc
 ```
 
 In the TUI: `↑/↓` or click to select · `d` deploy · `s` scale · `R` rollback · `/` filter ·
@@ -146,7 +148,8 @@ AWS service, so the same command keeps working when other clouds are added.
 4. ✅ **`image`** (ECR) — repos & tags in TUI and CLI, deploy tag-picker, registry-validated deploys, stuck-rollout detection
 5. ✅ Distribution — Homebrew tap (macOS), 5-platform releases
 6. ✅ Onboarding wizard — interactive `config init`, plus `config add/remove/list`
-7. `service logs/events`, `db`, `promote`, `⌘k` palette, minor capabilities
+7. ✅ `service logs/events` — CLI (`logs -s [-f] [-n]`, `events -s`) and live TUI tabs
+8. `db`, `promote`, `⌘k` palette, minor capabilities
 
 See [`docs/superpowers/plans/2026-06-15-roadmap.md`](docs/superpowers/plans/2026-06-15-roadmap.md).
 

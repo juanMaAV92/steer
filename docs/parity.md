@@ -1,6 +1,6 @@
 # Paridad CLI ↔ TUI
 
-**Actualizado:** 2026-07-07
+**Actualizado:** 2026-07-09
 
 **Principio de producto:** toda capacidad de steer debe estar soportada en **ambos
 frentes** — CLI (scriptable, CI) y TUI (interactivo) — sobre el mismo core. Un frente
@@ -24,8 +24,8 @@ esté documentado aquí con su plan de cierre.
 | Selección de contexto | `--context` / `STEER_CONTEXT` / `default_context` | Switcher en vivo (`c` / click en top bar) | ✅ (modelos distintos, misma función) |
 | Guard de solo-lectura | `writable=false` bloquea comandos mutantes | Igual: notice y acciones bloqueadas | ✅ |
 | Setup de config | `config init\|add\|remove\|list\|validate` | — (sin config, apunta al wizard) | ✅ aceptado (nota 2) |
-| **Logs del servicio** | ❌ no existe comando | ❌ pestaña Logs es stub | 🔴 GAP doble (nota 3) |
-| **Events históricos del servicio** | ❌ solo durante `deploy -w` | ❌ pestaña Events vacía fuera de un deploy | 🟡 GAP doble (nota 4) |
+| Logs del servicio | `service logs -s [-f] [-n]` (tail 1h, merge multi-contenedor) | Pestaña Logs viva (tail + follow 3s) | ✅ |
+| Events históricos del servicio | `service events -s` (últimos 20, ascendente) | Pestaña Events poblada en reposo (tick 15s) | ✅ |
 | Bases de datos | ❌ | ❌ sección DATABASES stub | ⏳ hito 04 del roadmap |
 | `redeploy` / `promote` | ❌ | ❌ | ⏳ hito 02b del roadmap |
 
@@ -41,18 +41,22 @@ esté documentado aquí con su plan de cierre.
    apunta explícitamente al wizard (`no steer.toml found — try: steer config init`) en
    vez de un mensaje genérico. El wizard embebido en la TUI misma (en vez de solo el
    puntero al comando) queda fuera de alcance — no se identificó necesidad real.
-3. **Logs (GAP doble, el mayor).** La pestaña Logs del panel existe desde el rediseño
-   pero es un stub ("no log source configured"), y no hay `steer service logs` en CLI.
-   Falta la capacidad completa: interface `core.LogSource` (CloudWatch Logs en AWS) +
-   `service logs -s [-f]` en CLI + pestaña viva en TUI. **Cierre propuesto: hito propio
-   "logs" después de 07/08** (antes de 04 db si el equipo lo pide — es la pestaña que ya
-   está a la vista). Registrado en el roadmap.
-4. **Events históricos (GAP doble, menor).** ECS siempre tiene eventos del servicio,
-   pero hoy solo se muestran durante un rollout: la pestaña Events queda vacía en reposo
-   y no existe `service events` en CLI. Cierre barato reutilizando
-   `Deployer.ServiceEvents` (ya existe): poblar la pestaña al seleccionar servicio +
-   subcomando `service events -s`. **Cierre propuesto: junto al hito de logs** (misma
-   zona de UI, mismo patrón de carga).
+3. **Logs — cerrado por el hito 03b.** El gap doble (pestaña Logs stub + sin comando
+   CLI) se cerró con `core.LogSource`, implementado sobre CloudWatch Logs con
+   auto-discovery desde la task definition (driver `awslogs`, cero configuración nueva en
+   `steer.toml`): CLI `service logs -s [-f] [-n]` (tail de las últimas 100 líneas dentro de
+   una ventana de 1h, follow cada 3s, merge multi-contenedor con prefijo `[container]`) y
+   pestaña Logs viva en la TUI (mismo tail+follow, auto-scroll inteligente). La ventana de
+   1h es una limitación real de `FilterLogEvents` (solo lee hacia delante, no hay "últimas
+   N líneas" arbitrario sin ella). Si el driver de logging no es compatible, ambos frentes
+   devuelven `core.ErrNoLogSource` con mensaje explicativo en vez de fallar en silencio.
+   Spec: `docs/superpowers/specs/2026-07-09-logs-events-design.md`, plan:
+   `docs/superpowers/plans/2026-07-09-logs-events.md`.
+4. **Events históricos — cerrado por el hito 03b.** Se reutilizó
+   `Deployer.ServiceEvents` para ambos frentes: CLI `service events -s` (últimos 20,
+   ascendente) y pestaña Events poblada en reposo vía el tick de 15s ya existente. Durante
+   un rollout activo, el feed de deploy en vivo conserva la propiedad de la pestaña Events
+   (no compite con la carga histórica). Mismo spec y plan que la nota 3.
 
 ## Regla para nuevos hitos
 
