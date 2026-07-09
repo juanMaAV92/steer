@@ -96,6 +96,10 @@ type Model struct {
 	logsLoading bool
 	logsErr     error
 	logsGen     int // generación del follow: invalida páginas/ticks obsoletos
+
+	eventsService string // servicio cuyo histórico está en la pestaña Events
+	eventsLastID  string // ID del evento más reciente pintado (dedup del refresh)
+	eventsErr     string
 }
 
 func New(ctx context.Context, factory providers.ProviderFactory, contexts []config.Context, current config.Context) Model {
@@ -290,6 +294,55 @@ func logLineView(l core.LogLine) string {
 	return line + l.Message
 }
 
+// eventLine formatea un evento del servicio para el feed del panel.
+func eventLine(e core.ServiceEvent) string {
+	line := "[" + e.At.Format("15:04:05") + "] " + e.Message
+	if e.IsError {
+		return render.Danger(line)
+	}
+	return render.Dim(line)
+}
+
+// loadServiceEventsCmd pide el histórico de eventos del servicio.
+func (m Model) loadServiceEventsCmd(service string) tea.Cmd {
+	dep := m.dep
+	ctx := m.runCtx
+	return func() tea.Msg {
+		evs, err := dep.ServiceEvents(ctx, service)
+		return serviceEventsMsg{service: service, events: evs, err: err}
+	}
+}
+
+// syncEvents dispara la carga del histórico si la pestaña Events está visible
+// para un servicio distinto del cargado. El feed de deploy tiene prioridad:
+// activo, o terminado con su servicio aún seleccionado, no se toca.
+func (m *Model) syncEvents() tea.Cmd {
+	if m.tabs.Active != panel.TabEvents || m.sidebar.lastSelected == sectionImages {
+		return nil
+	}
+	s, ok := m.sidebar.selected()
+	if !ok {
+		return nil
+	}
+	if m.deploy.Active {
+		return nil
+	}
+	if m.deploy.Done && m.deploy.Service == s.Name {
+		return nil // el resultado del deploy sigue en pantalla
+	}
+	if m.eventsService == s.Name {
+		return nil
+	}
+	if m.deploy.Done {
+		m.deploy.Reset() // feed de otro servicio: se abandona
+	}
+	m.eventsService = s.Name
+	m.eventsLastID = ""
+	m.eventsErr = ""
+	m.events.Reset()
+	return m.loadServiceEventsCmd(s.Name)
+}
+
 // layout reparte el espacio: [top bar][regla][cuerpo bodyH][regla][help].
 // Si el ancho < singleColumnThreshold, colapsa a una sola columna apilada.
 func (m *Model) layout() {
@@ -437,8 +490,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.applyActionConfirmed(actionConfirmedMsg{kind: actionDeploy, service: msg.service, input: msg.tag})
 		return m, cmd
 
+	case serviceEventsMsg:
+		if msg.service != m.eventsService || m.deploy.Active {
+			return m, nil // obsoleto, o el feed de deploy tomó la pestaña
+		}
+		if msg.err != nil {
+			m.eventsErr = msg.err.Error()
+			return m, nil
+		}
+		m.eventsErr = ""
+		if len(msg.events) > 0 && msg.events[0].ID == m.eventsLastID {
+			return m, nil // sin novedades: no repintar (conserva el scroll)
+		}
+		m.eventsLastID = ""
+		if len(msg.events) > 0 {
+			m.eventsLastID = msg.events[0].ID
+		}
+		m.events.Reset()
+		for i := len(msg.events) - 1; i >= 0; i-- { // ascendente: lo nuevo al fondo
+			m.events.AppendLine(eventLine(msg.events[i]))
+		}
+		return m, nil
+
 	case tickMsg:
-		return m, tea.Batch(m.loadServicesCmd(), tickCmd())
+		cmds := []tea.Cmd{m.loadServicesCmd(), tickCmd()}
+		if m.tabs.Active == panel.TabEvents && m.eventsService != "" &&
+			!m.deploy.Active && !m.deploy.Done {
+			cmds = append(cmds, m.loadServiceEventsCmd(m.eventsService))
+		}
+		return m, tea.Batch(cmds...)
 
 	case actionDoneMsg:
 		m.focus = focusSidebar
@@ -469,12 +549,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		for i := len(msg.events) - 1; i >= 0; i-- {
 			e := msg.events[i]
-			line := "[" + e.At.Format("15:04:05") + "] " + e.Message
-			if e.IsError {
-				m.events.AppendLine(render.Danger(line))
-			} else {
-				m.events.AppendLine(render.Dim(line))
-			}
+			m.events.AppendLine(eventLine(e))
 			if core.IsProvisioningFailure(e.Message) {
 				m.deploy.PullErrors++
 			}
@@ -570,6 +645,7 @@ func (m *Model) applyActionConfirmed(r actionConfirmedMsg) tea.Cmd {
 		m.focus = focusPanel
 		m.tabs.Active = panel.TabEvents
 		m.events.Reset()
+		m.eventsService, m.eventsLastID, m.eventsErr = "", "", ""
 		m.deploy = deployState{Active: true, Service: r.service}
 		if r.kind == actionResize {
 			return startResizeCmd(m.runCtx, m.dep, r.service, r.resources)
@@ -709,7 +785,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 				m.sidebar.selectEntry(e)
 			}
 			m.focus = focusSidebar
-			return tea.Batch(m.syncRepoTags(), m.syncLogs())
+			return tea.Batch(m.syncRepoTags(), m.syncEvents(), m.syncLogs())
 		}
 		return nil
 	}
@@ -739,7 +815,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		}
 	}
 	m.focus = focusPanel
-	return m.syncLogs()
+	return tea.Batch(m.syncEvents(), m.syncLogs())
 }
 
 // handleFilterKey edita el filtro del sidebar en vivo (captura el teclado).
@@ -810,7 +886,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Left):
 			m.tabs.Prev()
 		}
-		return m, m.syncLogs()
+		return m, tea.Batch(m.syncEvents(), m.syncLogs())
 	}
 
 	// foco en sidebar
@@ -824,7 +900,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sidebar.toggle(e.Section)
 		}
 	}
-	return m, tea.Batch(m.syncRepoTags(), m.syncLogs())
+	return m, tea.Batch(m.syncRepoTags(), m.syncEvents(), m.syncLogs())
 }
 
 // applyContextSwitch conmuta al contexto recibido en sel; si el provider falla, muestra un notice.
@@ -872,6 +948,7 @@ func (m Model) applyContextSwitch(sel config.Context) (tea.Model, tea.Cmd) {
 	m.logs.Reset()
 	m.logsService, m.logsCursor, m.logsErr, m.logsLoading = "", "", nil, false
 	m.logsGen++
+	m.eventsService, m.eventsLastID, m.eventsErr = "", "", ""
 	return m, tea.Batch(m.loadServicesCmd(), m.loadReposCmd())
 }
 
@@ -1109,6 +1186,9 @@ func (m Model) panelBody() string {
 	}
 	switch m.tabs.Active {
 	case panel.TabEvents:
+		if m.eventsErr != "" && !m.deploy.Active && !m.deploy.Done {
+			return render.Danger("events error: " + m.eventsErr)
+		}
 		return m.events.View()
 	case panel.TabLogs:
 		switch {

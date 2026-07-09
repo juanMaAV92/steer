@@ -84,3 +84,11 @@ type logsPageMsg struct {
 
 // logsTickMsg dispara el siguiente poll del follow de la sesión gen.
 type logsTickMsg struct{ gen int }
+
+// serviceEventsMsg trae el histórico de eventos del servicio (pestaña Events
+// en reposo; el feed de deploy en vivo no pasa por aquí).
+type serviceEventsMsg struct {
+	service string
+	events  []core.ServiceEvent
+	err     error
+}

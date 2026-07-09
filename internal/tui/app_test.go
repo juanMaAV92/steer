@@ -1340,3 +1340,67 @@ func TestErrorScreenTeaches(t *testing.T) {
 	out := stripANSI(m.View())
 	require.Contains(t, out, "aws sso login")
 }
+
+func TestEventsTabMuestraHistorico(t *testing.T) {
+	t0 := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+	fake := &coretest.FakeDeployer{
+		Services: servicesNamed("api"),
+		Events: []core.ServiceEvent{ // más recientes primero (contrato)
+			{ID: "2", At: t0.Add(time.Minute), Message: "reached steady state"},
+			{ID: "1", At: t0, Message: "started 2 tasks"},
+		},
+	}
+	m := newTestModelWithDeployer(t, fake)
+	m.tabs.Set(panel.TabEvents)
+
+	cmd := m.syncEvents()
+	require.NotNil(t, cmd)
+	mm, _ := m.Update(cmd())
+	m = mm.(Model)
+	view := stripANSI(m.View())
+	require.Contains(t, view, "started 2 tasks")
+	require.Contains(t, view, "reached steady state")
+	// ascendente: lo más nuevo al fondo
+	require.Less(t, strings.Index(view, "started 2 tasks"), strings.Index(view, "reached steady state"))
+}
+
+func TestEventsHistoricoNoInterrumpeElDeploy(t *testing.T) {
+	m := newTestModel(servicesNamed("api"))
+	m.tabs.Set(panel.TabEvents)
+	m.deploy = deployState{Active: true, Service: "api"}
+	require.Nil(t, m.syncEvents()) // el feed en vivo es dueño de la pestaña
+}
+
+func TestEventsHistoricoSinNovedadesNoRepinta(t *testing.T) {
+	t0 := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+	fake := &coretest.FakeDeployer{
+		Services: servicesNamed("api"),
+		Events:   []core.ServiceEvent{{ID: "1", At: t0, Message: "steady"}},
+	}
+	m := newTestModelWithDeployer(t, fake)
+	m.tabs.Set(panel.TabEvents)
+	mm, _ := m.Update(m.syncEvents()())
+	m = mm.(Model)
+	require.Equal(t, "1", m.eventsLastID)
+
+	// segunda respuesta idéntica (refresh del tick): no resetea el viewport
+	mm, _ = m.Update(serviceEventsMsg{service: "api", events: fake.Events})
+	m = mm.(Model)
+	require.Equal(t, "1", m.eventsLastID)
+	require.Contains(t, stripANSI(m.View()), "steady")
+}
+
+func TestLoadServiceEventsCmdProduceMsg(t *testing.T) {
+	t0 := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+	fake := &coretest.FakeDeployer{
+		Services: servicesNamed("api"),
+		Events:   []core.ServiceEvent{{ID: "1", At: t0, Message: "steady"}},
+	}
+	m := newTestModelWithDeployer(t, fake)
+
+	msg := m.loadServiceEventsCmd("api")()
+	evMsg, ok := msg.(serviceEventsMsg)
+	require.True(t, ok)
+	require.Equal(t, "api", evMsg.service)
+	require.Len(t, evMsg.events, 1)
+}
