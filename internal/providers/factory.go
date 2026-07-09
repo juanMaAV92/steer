@@ -36,6 +36,9 @@ type Provider interface {
 	// Registry devuelve la capacidad de imágenes; core.ErrNoImagesConfig si el
 	// contexto no tiene bloque [images].
 	Registry() (core.Registry, error)
+	// Logs devuelve la capacidad de lectura de logs del contexto. El origen se
+	// descubre por servicio: core.ErrNoLogSource llega por operación, no aquí.
+	Logs() (core.LogSource, error)
 }
 
 // ProviderFactory construye el bundle de un contexto. ctx permite cancelar la

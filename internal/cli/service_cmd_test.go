@@ -19,8 +19,9 @@ import (
 
 // fakeProvider adapta fakes de core al Provider bundle.
 type fakeProvider struct {
-	dep core.Deployer
-	reg core.Registry // nil → capacidad deshabilitada
+	dep  core.Deployer
+	reg  core.Registry  // nil → capacidad deshabilitada
+	logs core.LogSource // nil → sin log source (tests)
 }
 
 func (p fakeProvider) Deployer() (core.Deployer, error) { return p.dep, nil }
@@ -30,6 +31,13 @@ func (p fakeProvider) Registry() (core.Registry, error) {
 		return nil, core.ErrNoImagesConfig
 	}
 	return p.reg, nil
+}
+
+func (p fakeProvider) Logs() (core.LogSource, error) {
+	if p.logs == nil {
+		return nil, core.ErrNoLogSource
+	}
+	return p.logs, nil
 }
 
 func withFakeDeployer(t *testing.T, fake core.Deployer) {

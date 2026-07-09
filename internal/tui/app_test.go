@@ -36,10 +36,19 @@ func fakeFactoryWithRegistry(dep core.Deployer, reg core.Registry) providers.Pro
 	}
 }
 
+// fakeFactoryWithLogs adapta un core.Deployer y un core.LogSource fake a una
+// ProviderFactory (para tests de la pestaña Logs).
+func fakeFactoryWithLogs(dep core.Deployer, src core.LogSource) providers.ProviderFactory {
+	return func(context.Context, config.Context) (providers.Provider, error) {
+		return fakeProvider{dep: dep, logs: src}, nil
+	}
+}
+
 // fakeProvider adapta fakes de core al Provider bundle.
 type fakeProvider struct {
-	dep core.Deployer
-	reg core.Registry // nil → capacidad deshabilitada
+	dep  core.Deployer
+	reg  core.Registry  // nil → capacidad deshabilitada
+	logs core.LogSource // nil → sin log source (tests)
 }
 
 func (p fakeProvider) Deployer() (core.Deployer, error) { return p.dep, nil }
@@ -49,6 +58,13 @@ func (p fakeProvider) Registry() (core.Registry, error) {
 		return nil, core.ErrNoImagesConfig
 	}
 	return p.reg, nil
+}
+
+func (p fakeProvider) Logs() (core.LogSource, error) {
+	if p.logs == nil {
+		return nil, core.ErrNoLogSource
+	}
+	return p.logs, nil
 }
 
 // stripANSI elimina secuencias de escape ANSI de una cadena.

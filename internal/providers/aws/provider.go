@@ -21,6 +21,9 @@ type Provider struct {
 
 	regOnce  sync.Once
 	registry core.Registry
+
+	logsOnce sync.Once
+	logsrc   core.LogSource
 }
 
 // NewProvider carga la sesión AWS del contexto (cancelable vía ctx).
@@ -49,4 +52,11 @@ func (p *Provider) Registry() (core.Registry, error) {
 	}
 	p.regOnce.Do(func() { p.registry = NewRegistry(p.cfg, p.cfgCtx.RepoPrefix()) })
 	return p.registry, nil
+}
+
+// Logs devuelve el LogSource CloudWatch del contexto (memoizado). El origen
+// por servicio se auto-descubre de la task definition: no requiere config.
+func (p *Provider) Logs() (core.LogSource, error) {
+	p.logsOnce.Do(func() { p.logsrc = NewLogSource(p.cfg, p.cfgCtx.Cluster) })
+	return p.logsrc, nil
 }

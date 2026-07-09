@@ -63,3 +63,15 @@ func (a *AppContext) Registry(ctx context.Context) (core.Registry, error) {
 	}
 	return reg, err
 }
+
+// Logs construye (una vez) el provider y devuelve su LogSource.
+func (a *AppContext) Logs(ctx context.Context) (core.LogSource, error) {
+	if a.provider == nil {
+		p, err := a.Factory(ctx, a.Ctx)
+		if err != nil {
+			return nil, err
+		}
+		a.provider = p
+	}
+	return a.provider.Logs()
+}

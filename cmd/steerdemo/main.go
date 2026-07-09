@@ -23,6 +23,9 @@ func (p fakeProvider) Deployer() (core.Deployer, error) { return p.dep, nil }
 // Registry no está cableado en esta demo: sin bloque [images].
 func (p fakeProvider) Registry() (core.Registry, error) { return nil, core.ErrNoImagesConfig }
 
+// Logs no está cableado en esta demo: sin LogSource.
+func (p fakeProvider) Logs() (core.LogSource, error) { return nil, core.ErrNoLogSource }
+
 func main() {
 	now := time.Now()
 	fake := &coretest.FakeDeployer{
