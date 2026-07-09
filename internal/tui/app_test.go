@@ -38,6 +38,8 @@ func fakeFactoryWithRegistry(dep core.Deployer, reg core.Registry) providers.Pro
 
 // fakeFactoryWithLogs adapta un core.Deployer y un core.LogSource fake a una
 // ProviderFactory (para tests de la pestaña Logs).
+//
+//nolint:unused // se consume en la task de la pestaña Logs (T7)
 func fakeFactoryWithLogs(dep core.Deployer, src core.LogSource) providers.ProviderFactory {
 	return func(context.Context, config.Context) (providers.Provider, error) {
 		return fakeProvider{dep: dep, logs: src}, nil
