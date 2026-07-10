@@ -13,10 +13,12 @@
 
 ---
 
-> 🚧 **Alpha.** The `service` vertical (deploy, scale, rollback, status) and the interactive
-> TUI work today on AWS ECS. Registry, databases and more capabilities are on the
-> [roadmap](docs/superpowers/plans/2026-06-15-roadmap.md).
+> 🚧 **Alpha.** The `service` vertical (deploy, scale, rollback, status, logs, events) and
+> the interactive TUI work today on AWS ECS. Registry, databases and more capabilities are
+> on the [roadmap](docs/superpowers/plans/2026-06-15-roadmap.md).
 > Design: [`docs/design.md`](docs/design.md).
+>
+> 📖 **Documentation:** <https://juanmaav92.github.io/steer/docs>
 
 ## What is Steer?
 
